@@ -9,6 +9,7 @@ import com.codflow.backend.team.dto.*;
 import com.codflow.backend.team.entity.User;
 import com.codflow.backend.team.enums.Role;
 import com.codflow.backend.team.repository.UserRepository;
+import com.codflow.backend.team.repository.UserSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -93,7 +94,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public PageResponse<UserDto> getUsers(Role role, String search, Pageable pageable) {
-        Page<User> page = userRepository.searchUsers(role, search, pageable);
+        Page<User> page = userRepository.findAll(UserSpecification.withFilters(role, search), pageable);
         return PageResponse.of(page.map(this::toDto));
     }
 

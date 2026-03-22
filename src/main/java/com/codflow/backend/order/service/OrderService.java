@@ -10,6 +10,7 @@ import com.codflow.backend.order.entity.OrderStatusHistory;
 import com.codflow.backend.order.enums.OrderSource;
 import com.codflow.backend.order.enums.OrderStatus;
 import com.codflow.backend.order.repository.OrderRepository;
+import com.codflow.backend.order.repository.OrderSpecification;
 import com.codflow.backend.order.repository.OrderStatusHistoryRepository;
 import com.codflow.backend.product.repository.ProductRepository;
 import com.codflow.backend.security.UserPrincipal;
@@ -170,7 +171,8 @@ public class OrderService {
                 filterAssignedTo = user.getId();
             }
         }
-        Page<Order> page = orderRepository.findWithFilters(status, source, filterAssignedTo, search, from, to, pageable);
+        Page<Order> page = orderRepository.findAll(
+                OrderSpecification.withFilters(status, source, filterAssignedTo, search, from, to), pageable);
         return PageResponse.of(page.map(o -> toDto(o, false)));
     }
 

@@ -7,6 +7,7 @@ import com.codflow.backend.product.dto.CreateProductRequest;
 import com.codflow.backend.product.dto.ProductDto;
 import com.codflow.backend.product.entity.Product;
 import com.codflow.backend.product.repository.ProductRepository;
+import com.codflow.backend.product.repository.ProductSpecification;
 import com.codflow.backend.stock.entity.StockMovement;
 import com.codflow.backend.stock.enums.MovementType;
 import com.codflow.backend.stock.repository.StockMovementRepository;
@@ -74,7 +75,7 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public PageResponse<ProductDto> getProducts(String search, Pageable pageable) {
-        Page<Product> page = productRepository.searchProducts(search, pageable);
+        Page<Product> page = productRepository.findAll(ProductSpecification.withFilters(search), pageable);
         return PageResponse.of(page.map(this::toDto));
     }
 
