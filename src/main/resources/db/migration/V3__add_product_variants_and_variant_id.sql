@@ -1,4 +1,11 @@
--- V3: Create product_variants table and add variant_id to order_items
+-- V3: Create product_variants table, add variant_id to order_items, create system_settings
+
+CREATE TABLE system_settings (
+    setting_key   VARCHAR(100) PRIMARY KEY,
+    setting_value TEXT,
+    description   VARCHAR(255),
+    updated_at    TIMESTAMP
+);
 
 CREATE TABLE product_variants (
     id            BIGSERIAL    PRIMARY KEY,
