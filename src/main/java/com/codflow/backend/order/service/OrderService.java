@@ -3,6 +3,8 @@ package com.codflow.backend.order.service;
 import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
+import com.codflow.backend.delivery.entity.DeliveryShipment;
+import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.dto.*;
 import com.codflow.backend.order.entity.Order;
 import com.codflow.backend.order.entity.OrderItem;
@@ -12,7 +14,9 @@ import com.codflow.backend.order.enums.OrderStatus;
 import com.codflow.backend.order.repository.OrderRepository;
 import com.codflow.backend.order.repository.OrderSpecification;
 import com.codflow.backend.order.repository.OrderStatusHistoryRepository;
+import com.codflow.backend.product.entity.ProductVariant;
 import com.codflow.backend.product.repository.ProductRepository;
+import com.codflow.backend.product.repository.ProductVariantRepository;
 import com.codflow.backend.security.UserPrincipal;
 import com.codflow.backend.stock.service.StockService;
 import com.codflow.backend.team.entity.User;
@@ -39,7 +43,10 @@ public class OrderService {
     private final OrderStatusHistoryRepository statusHistoryRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
+    private final DeliveryShipmentRepository shipmentRepository;
     private final StockService stockService;
+    private final RoundRobinAssignmentService roundRobinAssignmentService;
 
     @Transactional
     public OrderDto createOrder(CreateOrderRequest request, UserPrincipal principal) {
@@ -72,6 +79,14 @@ public class OrderService {
             if (itemReq.getProductId() != null) {
                 productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
             }
+            if (itemReq.getVariantId() != null) {
+                productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
+                    item.setVariant(v);
+                    if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
+                        item.setUnitPrice(v.getPriceOverride());
+                    }
+                });
+            }
             item.calculateTotalPrice();
             order.addItem(item);
         }
@@ -81,6 +96,9 @@ public class OrderService {
 
         // Record initial status history
         recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Commande créée");
+
+        // Auto-assign via round-robin
+        roundRobinAssignmentService.assign(saved);
 
         log.info("Order created: {} from source {}", saved.getOrderNumber(), saved.getSource());
         return toDto(saved, true);
@@ -250,17 +268,24 @@ public class OrderService {
     }
 
     public OrderDto toDto(Order order, boolean withHistory) {
-        List<OrderItemDto> items = order.getItems().stream().map(item ->
-                OrderItemDto.builder()
-                        .id(item.getId())
-                        .productId(item.getProduct() != null ? item.getProduct().getId() : null)
-                        .productName(item.getProductName())
-                        .productSku(item.getProductSku())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .totalPrice(item.getTotalPrice())
-                        .build()
-        ).toList();
+        List<OrderItemDto> items = order.getItems().stream().map(item -> {
+            ProductVariant v = item.getVariant();
+            return OrderItemDto.builder()
+                    .id(item.getId())
+                    .productId(item.getProduct() != null ? item.getProduct().getId() : null)
+                    .variantId(v != null ? v.getId() : null)
+                    .variantColor(v != null ? v.getColor() : null)
+                    .variantSize(v != null ? v.getSize() : null)
+                    .productName(item.getProductName())
+                    .productSku(item.getProductSku())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getUnitPrice())
+                    .totalPrice(item.getTotalPrice())
+                    .build();
+        }).toList();
+
+        // Delivery status from shipment
+        DeliveryShipment shipment = shipmentRepository.findByOrderId(order.getId()).orElse(null);
 
         List<OrderStatusHistoryDto> history = withHistory
                 ? order.getStatusHistory().stream().map(h ->
@@ -294,6 +319,9 @@ public class OrderService {
                 .totalAmount(order.getTotalAmount())
                 .status(order.getStatus())
                 .statusLabel(order.getStatus().getLabel())
+                .deliveryStatus(shipment != null ? shipment.getStatus() : null)
+                .deliveryStatusLabel(shipment != null ? shipment.getStatus().getLabel() : null)
+                .trackingNumber(shipment != null ? shipment.getTrackingNumber() : null)
                 .assignedToId(order.getAssignedTo() != null ? order.getAssignedTo().getId() : null)
                 .assignedToName(order.getAssignedTo() != null ? order.getAssignedTo().getFullName() : null)
                 .assignedAt(order.getAssignedAt())

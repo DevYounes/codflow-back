@@ -3,7 +3,9 @@ package com.codflow.backend.product.controller;
 import com.codflow.backend.common.dto.ApiResponse;
 import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.product.dto.CreateProductRequest;
+import com.codflow.backend.product.dto.CreateProductVariantRequest;
 import com.codflow.backend.product.dto.ProductDto;
+import com.codflow.backend.product.dto.ProductVariantDto;
 import com.codflow.backend.product.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,5 +73,31 @@ public class ProductController {
     public ResponseEntity<ApiResponse<Void>> deactivateProduct(@PathVariable Long id) {
         productService.deactivateProduct(id);
         return ResponseEntity.ok(ApiResponse.success("Produit désactivé"));
+    }
+
+    // ---- Variants ----
+
+    @PostMapping("/{id}/variants")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Ajouter une variante (couleur / taille) à un produit")
+    public ResponseEntity<ApiResponse<ProductVariantDto>> addVariant(
+            @PathVariable Long id,
+            @RequestBody CreateProductVariantRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Variante ajoutée", productService.addVariant(id, request)));
+    }
+
+    @GetMapping("/{id}/variants")
+    @Operation(summary = "Lister les variantes actives d'un produit")
+    public ResponseEntity<ApiResponse<List<ProductVariantDto>>> getVariants(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(productService.getVariants(id)));
+    }
+
+    @DeleteMapping("/variants/{variantId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Désactiver une variante")
+    public ResponseEntity<ApiResponse<Void>> deactivateVariant(@PathVariable Long variantId) {
+        productService.deactivateVariant(variantId);
+        return ResponseEntity.ok(ApiResponse.success("Variante désactivée"));
     }
 }

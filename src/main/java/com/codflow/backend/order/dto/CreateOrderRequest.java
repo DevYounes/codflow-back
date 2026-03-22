@@ -50,6 +50,7 @@ public class CreateOrderRequest {
     @Setter
     public static class OrderItemRequest {
         private Long productId;
+        private Long variantId;
 
         @NotBlank(message = "Le nom du produit est obligatoire")
         private String productName;

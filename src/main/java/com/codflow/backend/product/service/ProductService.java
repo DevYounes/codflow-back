@@ -4,10 +4,14 @@ import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.product.dto.CreateProductRequest;
+import com.codflow.backend.product.dto.CreateProductVariantRequest;
 import com.codflow.backend.product.dto.ProductDto;
+import com.codflow.backend.product.dto.ProductVariantDto;
 import com.codflow.backend.product.entity.Product;
+import com.codflow.backend.product.entity.ProductVariant;
 import com.codflow.backend.product.repository.ProductRepository;
 import com.codflow.backend.product.repository.ProductSpecification;
+import com.codflow.backend.product.repository.ProductVariantRepository;
 import com.codflow.backend.stock.entity.StockMovement;
 import com.codflow.backend.stock.enums.MovementType;
 import com.codflow.backend.stock.repository.StockMovementRepository;
@@ -26,6 +30,7 @@ import java.util.List;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
     private final StockMovementRepository stockMovementRepository;
 
     @Transactional
@@ -101,7 +106,42 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", id));
     }
 
+    @Transactional
+    public ProductVariantDto addVariant(Long productId, CreateProductVariantRequest request) {
+        Product product = getProductById(productId);
+        if (productVariantRepository.existsByProductIdAndColorAndSize(productId, request.getColor(), request.getSize())) {
+            throw new BusinessException("Une variante avec cette couleur et taille existe déjà");
+        }
+        ProductVariant variant = new ProductVariant();
+        variant.setProduct(product);
+        variant.setColor(request.getColor());
+        variant.setSize(request.getSize());
+        variant.setVariantSku(request.getVariantSku());
+        variant.setPriceOverride(request.getPriceOverride());
+        variant.setCurrentStock(request.getCurrentStock());
+        return toVariantDto(productVariantRepository.save(variant));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductVariantDto> getVariants(Long productId) {
+        getProductById(productId); // ensure product exists
+        return productVariantRepository.findByProductIdAndActiveTrue(productId)
+                .stream().map(this::toVariantDto).toList();
+    }
+
+    @Transactional
+    public void deactivateVariant(Long variantId) {
+        ProductVariant variant = productVariantRepository.findById(variantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Variante", variantId));
+        variant.setActive(false);
+        productVariantRepository.save(variant);
+    }
+
     public ProductDto toDto(Product product) {
+        List<ProductVariantDto> variants = productVariantRepository
+                .findByProductIdAndActiveTrue(product.getId())
+                .stream().map(this::toVariantDto).toList();
+
         return ProductDto.builder()
                 .id(product.getId())
                 .sku(product.getSku())
@@ -115,8 +155,23 @@ public class ProductService {
                 .alertEnabled(product.isAlertEnabled())
                 .lowStock(product.getCurrentStock() <= product.getMinThreshold() && product.getCurrentStock() > 0)
                 .outOfStock(product.getCurrentStock() == 0)
+                .variants(variants)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
+                .build();
+    }
+
+    private ProductVariantDto toVariantDto(ProductVariant v) {
+        return ProductVariantDto.builder()
+                .id(v.getId())
+                .productId(v.getProduct().getId())
+                .color(v.getColor())
+                .size(v.getSize())
+                .variantSku(v.getVariantSku())
+                .priceOverride(v.getPriceOverride())
+                .currentStock(v.getCurrentStock())
+                .active(v.isActive())
+                .createdAt(v.getCreatedAt())
                 .build();
     }
 }

@@ -1,6 +1,7 @@
 package com.codflow.backend.order.entity;
 
 import com.codflow.backend.product.entity.Product;
+import com.codflow.backend.product.entity.ProductVariant;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -30,6 +31,10 @@ public class OrderItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id")
     private Product product;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variant_id")
+    private ProductVariant variant;
 
     @Column(name = "product_name", nullable = false)
     private String productName;

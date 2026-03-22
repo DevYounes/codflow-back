@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
@@ -21,6 +22,7 @@ public class ProductDto {
     private boolean alertEnabled;
     private boolean lowStock;
     private boolean outOfStock;
+    private List<ProductVariantDto> variants;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -1,5 +1,6 @@
 package com.codflow.backend.order.dto;
 
+import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.order.enums.OrderSource;
 import com.codflow.backend.order.enums.OrderStatus;
 import lombok.Builder;
@@ -28,6 +29,9 @@ public class OrderDto {
     private BigDecimal totalAmount;
     private OrderStatus status;
     private String statusLabel;
+    private ShipmentStatus deliveryStatus;
+    private String deliveryStatusLabel;
+    private String trackingNumber;
     private Long assignedToId;
     private String assignedToName;
     private LocalDateTime assignedAt;
