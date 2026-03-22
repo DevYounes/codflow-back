@@ -30,9 +30,9 @@ public class CreateOrderRequest {
     @NotBlank(message = "L'adresse est obligatoire")
     private String address;
 
-    @NotBlank(message = "La ville est obligatoire")
     private String city;
 
+    @NotBlank(message = "La ville est obligatoire")
     private String ville;
     private String zipCode;
     private String notes;

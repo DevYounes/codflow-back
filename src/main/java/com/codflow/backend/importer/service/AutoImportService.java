@@ -245,6 +245,7 @@ public class AutoImportService {
         req.setCustomerName(customerName.trim());
         req.setCustomerPhone(phone.trim());
         req.setAddress(address.trim());
+        req.setVille(city.trim());
         req.setCity(city.trim());
 
         // --- Optional order fields ---

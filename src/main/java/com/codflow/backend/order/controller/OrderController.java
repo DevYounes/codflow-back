@@ -72,8 +72,10 @@ public class OrderController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Obtenir une commande par ID")
-    public ResponseEntity<ApiResponse<OrderDto>> getOrder(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success(orderService.getOrder(id)));
+    public ResponseEntity<ApiResponse<OrderDto>> getOrder(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getOrder(id, principal)));
     }
 
     @PatchMapping("/{id}/status")

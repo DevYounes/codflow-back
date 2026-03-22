@@ -59,8 +59,10 @@ public class OrderService {
         order.setCustomerPhone(request.getCustomerPhone());
         order.setCustomerPhone2(request.getCustomerPhone2());
         order.setAddress(request.getAddress());
-        order.setCity(request.getCity());
         order.setVille(request.getVille());
+        // city (NOT NULL in DB) is derived from ville when not explicitly provided
+        order.setCity(request.getCity() != null && !request.getCity().isBlank()
+                ? request.getCity() : request.getVille());
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
         order.setShippingCost(request.getShippingCost() != null ? request.getShippingCost() : java.math.BigDecimal.ZERO);
@@ -181,13 +183,10 @@ public class OrderService {
                                             Long assignedTo, String search,
                                             LocalDateTime from, LocalDateTime to,
                                             Pageable pageable, UserPrincipal principal) {
-        // If agent, only see their own orders
+        // Agents can only see their own assigned orders — use role from JWT token directly
         Long filterAssignedTo = assignedTo;
-        if (principal != null) {
-            User user = userRepository.findById(principal.getId()).orElse(null);
-            if (user != null && user.getRole() == Role.AGENT) {
-                filterAssignedTo = user.getId();
-            }
+        if (principal != null && Role.AGENT.name().equals(principal.getRole())) {
+            filterAssignedTo = principal.getId();
         }
         Page<Order> page = orderRepository.findAll(
                 OrderSpecification.withFilters(status, source, filterAssignedTo, search, from, to), pageable);
@@ -195,8 +194,15 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public OrderDto getOrder(Long id) {
-        return toDto(getOrderById(id), true);
+    public OrderDto getOrder(Long id, UserPrincipal principal) {
+        Order order = getOrderById(id);
+        // Agents can only access orders assigned to them
+        if (principal != null && Role.AGENT.name().equals(principal.getRole())) {
+            if (order.getAssignedTo() == null || !order.getAssignedTo().getId().equals(principal.getId())) {
+                throw new BusinessException("Accès non autorisé à cette commande");
+            }
+        }
+        return toDto(order, true);
     }
 
     @Transactional(readOnly = true)
