@@ -118,6 +118,13 @@
             <version>${poi.version}</version>
         </dependency>
 
+        <!-- Apache Commons CSV (Google Sheets export parsing) -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.10.0</version>
+        </dependency>
+
         <!-- OpenAPI / Swagger -->
         <dependency>
             <groupId>org.springdoc</groupId>

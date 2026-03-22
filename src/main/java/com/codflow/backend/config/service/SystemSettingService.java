@@ -13,8 +13,8 @@ import java.util.Optional;
 public class SystemSettingService {
 
     // Well-known keys
-    public static final String KEY_EXCEL_IMPORT_PATH    = "excel.import.file.path";
-    public static final String KEY_ROUND_ROBIN_POINTER  = "assignment.round_robin.last_index";
+    public static final String KEY_SHEET_IMPORT_URL    = "googlesheet.import.url";
+    public static final String KEY_ROUND_ROBIN_POINTER = "assignment.round_robin.last_index";
 
     private final SystemSettingRepository repository;
 

@@ -16,6 +16,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     Optional<Product> findBySku(String sku);
 
+    Optional<Product> findByNameIgnoreCase(String name);
+
     boolean existsBySku(String sku);
 
     @Query("SELECT p FROM Product p WHERE p.active = true AND p.alertEnabled = true AND p.currentStock <= p.minThreshold")
