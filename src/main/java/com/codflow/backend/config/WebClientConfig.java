@@ -18,6 +18,7 @@ public class WebClientConfig {
     @Bean
     public WebClient.Builder webClientBuilder() {
         HttpClient httpClient = HttpClient.create()
+                .followRedirect(true)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10_000)
                 .responseTimeout(Duration.ofSeconds(30))
                 .doOnConnected(conn -> conn

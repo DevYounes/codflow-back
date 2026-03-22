@@ -17,6 +17,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -204,6 +205,14 @@ public class AutoImportService {
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
+        } catch (WebClientResponseException e) {
+            if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
+                throw new IllegalStateException(
+                        "Accès refusé à la feuille Google Sheets (HTTP " + e.getStatusCode().value() + "). " +
+                        "Vérifiez que le partage est activé : Fichier → Partager → \"Tout le monde avec le lien\" → Lecteur.");
+            }
+            log.error("Failed to fetch Google Sheet CSV from {}: {}", url, e.getMessage());
+            return null;
         } catch (Exception e) {
             log.error("Failed to fetch Google Sheet CSV from {}: {}", url, e.getMessage());
             return null;
