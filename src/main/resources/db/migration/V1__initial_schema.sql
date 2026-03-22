@@ -72,6 +72,7 @@ CREATE TABLE orders (
     customer_phone2  VARCHAR(20),
     address          TEXT         NOT NULL,
     city             VARCHAR(100) NOT NULL,
+    ville            VARCHAR(100),
     zip_code         VARCHAR(10),
     notes            TEXT,
     -- Amounts
