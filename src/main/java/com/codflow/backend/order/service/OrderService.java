@@ -3,6 +3,7 @@ package com.codflow.backend.order.service;
 import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
+import com.codflow.backend.common.util.PhoneNormalizer;
 import com.codflow.backend.delivery.entity.DeliveryShipment;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.dto.*;
@@ -56,13 +57,22 @@ public class OrderService {
         order.setOrderNumber(orderNumber);
         order.setSource(request.getSource() != null ? request.getSource() : OrderSource.MANUAL);
         order.setCustomerName(request.getCustomerName());
+        // Normalize phone for duplicate detection across format variants
+        // (0612345678 / 212612345678 / +212612345678 all resolve to the same canonical form)
+        String normalizedPhone = PhoneNormalizer.normalize(request.getCustomerPhone());
         order.setCustomerPhone(request.getCustomerPhone());
+        order.setCustomerPhoneNormalized(normalizedPhone);
         order.setCustomerPhone2(request.getCustomerPhone2());
         order.setAddress(request.getAddress());
         order.setVille(request.getVille());
         // city (NOT NULL in DB) is derived from ville when not explicitly provided
         order.setCity(request.getCity() != null && !request.getCity().isBlank()
                 ? request.getCity() : request.getVille());
+
+        // Flag as potential duplicate if another order already exists for this phone number
+        if (normalizedPhone != null && orderRepository.existsByCustomerPhoneNormalized(normalizedPhone)) {
+            order.setPotentialDuplicate(true);
+        }
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
         order.setShippingCost(request.getShippingCost() != null ? request.getShippingCost() : java.math.BigDecimal.ZERO);
@@ -325,6 +335,7 @@ public class OrderService {
                 .totalAmount(order.getTotalAmount())
                 .status(order.getStatus())
                 .statusLabel(order.getStatus().getLabel())
+                .potentialDuplicate(order.isPotentialDuplicate())
                 .deliveryStatus(shipment != null ? shipment.getStatus() : null)
                 .deliveryStatusLabel(shipment != null ? shipment.getStatus().getLabel() : null)
                 .trackingNumber(shipment != null ? shipment.getTrackingNumber() : null)

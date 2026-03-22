@@ -35,6 +35,9 @@ public class Order extends BaseEntity {
     @Column(name = "customer_phone", nullable = false, length = 20)
     private String customerPhone;
 
+    @Column(name = "customer_phone_normalized", length = 20)
+    private String customerPhoneNormalized;
+
     @Column(name = "customer_phone2", length = 20)
     private String customerPhone2;
 
@@ -67,6 +70,9 @@ public class Order extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private OrderStatus status = OrderStatus.NOUVEAU;
+
+    @Column(name = "potential_duplicate", nullable = false)
+    private boolean potentialDuplicate = false;
 
     // Assignment
     @ManyToOne(fetch = FetchType.LAZY)

@@ -29,6 +29,7 @@ public class OrderDto {
     private BigDecimal totalAmount;
     private OrderStatus status;
     private String statusLabel;
+    private boolean potentialDuplicate;
     private ShipmentStatus deliveryStatus;
     private String deliveryStatusLabel;
     private String trackingNumber;

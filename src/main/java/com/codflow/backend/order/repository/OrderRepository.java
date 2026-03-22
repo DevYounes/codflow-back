@@ -52,4 +52,6 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     @Query("SELECT o FROM Order o WHERE o.assignedTo IS NULL AND o.status = 'NOUVEAU'")
     List<Order> findUnassignedNewOrders();
+
+    boolean existsByCustomerPhoneNormalized(String customerPhoneNormalized);
 }
