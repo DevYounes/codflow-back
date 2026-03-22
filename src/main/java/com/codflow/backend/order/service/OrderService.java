@@ -189,7 +189,8 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<OrderDto> getOrders(OrderStatus status, OrderSource source,
+    public PageResponse<OrderDto> getOrders(OrderStatus status, java.util.Collection<OrderStatus> statuses,
+                                            OrderSource source,
                                             Long assignedTo, String search,
                                             LocalDateTime from, LocalDateTime to,
                                             Pageable pageable, UserPrincipal principal) {
@@ -199,7 +200,7 @@ public class OrderService {
             filterAssignedTo = principal.getId();
         }
         Page<Order> page = orderRepository.findAll(
-                OrderSpecification.withFilters(status, source, filterAssignedTo, search, from, to), pageable);
+                OrderSpecification.withFilters(status, statuses, source, filterAssignedTo, search, from, to), pageable);
         return PageResponse.of(page.map(o -> toDto(o, false)));
     }
 

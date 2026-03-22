@@ -8,11 +8,13 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public class OrderSpecification {
 
-    public static Specification<Order> withFilters(OrderStatus status, OrderSource source,
+    public static Specification<Order> withFilters(OrderStatus status, Collection<OrderStatus> statuses,
+                                                   OrderSource source,
                                                    Long assignedTo, String search,
                                                    LocalDateTime from, LocalDateTime to) {
         return (root, query, cb) -> {
@@ -20,6 +22,8 @@ public class OrderSpecification {
 
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
+            } else if (statuses != null && !statuses.isEmpty()) {
+                predicates.add(root.get("status").in(statuses));
             }
             if (source != null) {
                 predicates.add(cb.equal(root.get("source"), source));

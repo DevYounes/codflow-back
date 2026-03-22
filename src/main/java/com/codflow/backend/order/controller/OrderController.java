@@ -45,6 +45,7 @@ public class OrderController {
     @Operation(summary = "Lister les commandes avec filtres")
     public ResponseEntity<ApiResponse<PageResponse<OrderDto>>> getOrders(
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) List<OrderStatus> statuses,
             @RequestParam(required = false) OrderSource source,
             @RequestParam(required = false) Long assignedTo,
             @RequestParam(required = false) String search,
@@ -60,7 +61,7 @@ public class OrderController {
                 : Sort.by(sortBy).descending();
         PageRequest pageable = PageRequest.of(page, size, sort);
         return ResponseEntity.ok(ApiResponse.success(
-                orderService.getOrders(status, source, assignedTo, search, from, to, pageable, principal)));
+                orderService.getOrders(status, statuses, source, assignedTo, search, from, to, pageable, principal)));
     }
 
     @GetMapping("/my-orders")

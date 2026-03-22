@@ -1,11 +1,13 @@
 package com.codflow.backend.analytics.service;
 
 import com.codflow.backend.analytics.dto.*;
+import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.enums.OrderStatus;
 import com.codflow.backend.order.repository.OrderRepository;
 import com.codflow.backend.product.repository.ProductRepository;
+import com.codflow.backend.security.UserPrincipal;
 import com.codflow.backend.stock.repository.StockAlertRepository;
 import com.codflow.backend.team.entity.User;
 import com.codflow.backend.team.enums.Role;
@@ -188,6 +190,64 @@ public class AnalyticsService {
                     .revenue(BigDecimal.ZERO) // TODO: add revenue calculation
                     .build();
         }).collect(Collectors.toList());
+    }
+
+    private static final List<OrderStatus> CANCELLED_STATUSES = List.of(
+            OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX,
+            OrderStatus.FAKE_ORDER, OrderStatus.DOUBLON);
+
+    @Transactional(readOnly = true)
+    public AgentDashboardDto getAgentDashboard(UserPrincipal principal) {
+        User agent = userRepository.findById(principal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Agent", principal.getId()));
+
+        Long agentId = agent.getId();
+        LocalDateTime now        = LocalDateTime.now();
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime weekStart  = LocalDate.now().minusDays(6).atStartOfDay();
+        LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+
+        long total     = orderRepository.countByAgentAndDateRange(agentId, LocalDateTime.of(2000,1,1,0,0), now);
+        long today     = orderRepository.countByAgentAndDateRange(agentId, todayStart, now);
+        long week      = orderRepository.countByAgentAndDateRange(agentId, weekStart, now);
+        long month     = orderRepository.countByAgentAndDateRange(agentId, monthStart, now);
+        long confirmed = orderRepository.countByAgentAndStatus(agentId, OrderStatus.CONFIRME);
+        long cancelled = orderRepository.countByAgentAndStatuses(agentId, CANCELLED_STATUSES);
+        long pending   = Math.max(0, total - confirmed - cancelled);
+        long duplicates = orderRepository.countPotentialDuplicatesByAgent(agentId);
+
+        double confirmRate = total > 0 ? round((double) confirmed / total * 100) : 0;
+        double cancelRate  = total > 0 ? round((double) cancelled / total * 100) : 0;
+
+        // Daily trend (last 7 days, agent's orders only)
+        List<Object[]> raw = orderRepository.getDailyStatsForAgent(agentId, weekStart, now);
+        List<DailyStatsDto> trend = raw.stream().map(row -> {
+            long dayTotal     = ((Number) row[1]).longValue();
+            long dayConfirmed = ((Number) row[2]).longValue();
+            return DailyStatsDto.builder()
+                    .date(row[0].toString())
+                    .totalOrders(dayTotal)
+                    .confirmedOrders(dayConfirmed)
+                    .confirmationRate(dayTotal > 0 ? round((double) dayConfirmed / dayTotal * 100) : 0)
+                    .revenue(BigDecimal.ZERO)
+                    .build();
+        }).collect(Collectors.toList());
+
+        return AgentDashboardDto.builder()
+                .agentId(agentId)
+                .agentName(agent.getFullName())
+                .totalAssigned(total)
+                .todayOrders(today)
+                .weekOrders(week)
+                .monthOrders(month)
+                .confirmedOrders(confirmed)
+                .cancelledOrders(cancelled)
+                .pendingOrders(pending)
+                .potentialDuplicates(duplicates)
+                .confirmationRate(confirmRate)
+                .cancellationRate(cancelRate)
+                .dailyTrend(trend)
+                .build();
     }
 
     private long countCancelled() {

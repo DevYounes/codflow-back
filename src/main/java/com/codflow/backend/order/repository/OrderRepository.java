@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -54,4 +55,28 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     List<Order> findUnassignedNewOrders();
 
     boolean existsByCustomerPhoneNormalized(String customerPhoneNormalized);
+
+    // ---- Agent-specific stats ----
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId AND o.status = :status")
+    long countByAgentAndStatus(@Param("agentId") Long agentId, @Param("status") OrderStatus status);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId AND o.status IN :statuses")
+    long countByAgentAndStatuses(@Param("agentId") Long agentId, @Param("statuses") Collection<OrderStatus> statuses);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId AND o.createdAt BETWEEN :from AND :to")
+    long countByAgentAndDateRange(@Param("agentId") Long agentId,
+                                  @Param("from") LocalDateTime from,
+                                  @Param("to") LocalDateTime to);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId AND o.potentialDuplicate = true")
+    long countPotentialDuplicatesByAgent(@Param("agentId") Long agentId);
+
+    @Query("SELECT DATE(o.createdAt), COUNT(o), " +
+           "SUM(CASE WHEN o.status = 'CONFIRME' THEN 1 ELSE 0 END) " +
+           "FROM Order o WHERE o.assignedTo.id = :agentId AND o.createdAt BETWEEN :from AND :to " +
+           "GROUP BY DATE(o.createdAt) ORDER BY DATE(o.createdAt)")
+    List<Object[]> getDailyStatsForAgent(@Param("agentId") Long agentId,
+                                         @Param("from") LocalDateTime from,
+                                         @Param("to") LocalDateTime to);
 }
