@@ -20,7 +20,7 @@ public class OrderDto {
     private String customerPhone2;
     private String address;
     private String city;
-    private String wilaya;
+    private String ville;
     private String zipCode;
     private String notes;
     private BigDecimal subtotal;

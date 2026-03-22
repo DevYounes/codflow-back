@@ -45,7 +45,7 @@ public class Order extends BaseEntity {
     private String city;
 
     @Column(length = 100)
-    private String wilaya;
+    private String ville;
 
     @Column(name = "zip_code", length = 10)
     private String zipCode;

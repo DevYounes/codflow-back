@@ -25,7 +25,7 @@ import java.util.List;
  *
  * Expected column format (configurable):
  * A: Order Number  | B: Customer Name | C: Phone | D: Phone 2 | E: Address
- * F: City          | G: Wilaya        | H: Product Name | I: Qty | J: Unit Price
+ * F: City          | G: Ville         | H: Product Name | I: Qty | J: Unit Price
  * K: Shipping Cost | L: Notes
  *
  * The service is designed to be flexible - it logs errors per row and continues.
@@ -46,7 +46,7 @@ public class ExcelImportService {
     private static final int COL_PHONE2 = 3;
     private static final int COL_ADDRESS = 4;
     private static final int COL_CITY = 5;
-    private static final int COL_WILAYA = 6;
+    private static final int COL_VILLE = 6;
     private static final int COL_PRODUCT_NAME = 7;
     private static final int COL_PRODUCT_SKU = 8;
     private static final int COL_QUANTITY = 9;
@@ -135,7 +135,7 @@ public class ExcelImportService {
         request.setCustomerPhone2(getCellString(row, COL_PHONE2));
         request.setAddress(address.trim());
         request.setCity(city.trim());
-        request.setWilaya(getCellString(row, COL_WILAYA));
+        request.setVille(getCellString(row, COL_VILLE));
         request.setNotes(getCellString(row, COL_NOTES));
         request.setOrderNumber(getCellString(row, COL_ORDER_NUMBER));
 

@@ -33,7 +33,7 @@ public class CreateOrderRequest {
     @NotBlank(message = "La ville est obligatoire")
     private String city;
 
-    private String wilaya;
+    private String ville;
     private String zipCode;
     private String notes;
 

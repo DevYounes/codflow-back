@@ -52,7 +52,7 @@ public class OrderService {
         order.setCustomerPhone2(request.getCustomerPhone2());
         order.setAddress(request.getAddress());
         order.setCity(request.getCity());
-        order.setWilaya(request.getWilaya());
+        order.setVille(request.getVille());
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
         order.setShippingCost(request.getShippingCost() != null ? request.getShippingCost() : java.math.BigDecimal.ZERO);
@@ -284,7 +284,7 @@ public class OrderService {
                 .customerPhone2(order.getCustomerPhone2())
                 .address(order.getAddress())
                 .city(order.getCity())
-                .wilaya(order.getWilaya())
+                .ville(order.getVille())
                 .zipCode(order.getZipCode())
                 .notes(order.getNotes())
                 .subtotal(order.getSubtotal())

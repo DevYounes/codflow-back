@@ -279,7 +279,7 @@ public class DeliveryService {
                 .customerPhone2(order.getCustomerPhone2())
                 .address(order.getAddress())
                 .city(order.getCity())
-                .wilaya(order.getWilaya())
+                .ville(order.getVille())
                 .zipCode(order.getZipCode())
                 .codAmount(order.getTotalAmount())
                 .shippingCost(order.getShippingCost())

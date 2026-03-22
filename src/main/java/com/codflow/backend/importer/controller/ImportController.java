@@ -33,7 +33,7 @@ public class ImportController {
             - Colonne D: Téléphone 2 (optionnel)
             - Colonne E: Adresse (obligatoire)
             - Colonne F: Ville (obligatoire)
-            - Colonne G: Wilaya (optionnel)
+            - Colonne G: Ville (optionnel)
             - Colonne H: Nom du produit (obligatoire)
             - Colonne I: SKU produit (optionnel)
             - Colonne J: Quantité (défaut: 1)

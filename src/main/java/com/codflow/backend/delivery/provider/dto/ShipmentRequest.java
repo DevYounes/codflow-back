@@ -15,7 +15,7 @@ public class ShipmentRequest {
     private String customerPhone2;
     private String address;
     private String city;
-    private String wilaya;
+    private String ville;
     private String zipCode;
     private BigDecimal codAmount;  // Amount to collect on delivery
     private BigDecimal shippingCost;

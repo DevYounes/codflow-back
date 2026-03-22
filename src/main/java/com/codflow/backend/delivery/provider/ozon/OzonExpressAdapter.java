@@ -20,7 +20,7 @@ import java.util.List;
 
 /**
  * Ozon Express delivery provider adapter.
- * Implements the DeliveryProviderAdapter interface for Ozon Express DZ API.
+ * Implements the DeliveryProviderAdapter interface for Ozon Express MA API.
  *
  * API Documentation: Contact Ozon Express for API specs.
  * To support another delivery company, create a new class implementing DeliveryProviderAdapter.
@@ -56,7 +56,7 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             body.put("recipient_name", request.getCustomerName());
             body.put("recipient_phone", request.getCustomerPhone());
             body.put("recipient_address", request.getAddress());
-            body.put("wilaya", request.getWilaya());
+            body.put("ville", request.getVille());
             body.put("commune", request.getCity());
             body.put("cod_amount", request.getCodAmount());
             body.put("description", buildProductDescription(request));
