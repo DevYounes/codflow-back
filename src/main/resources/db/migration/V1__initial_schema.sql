@@ -72,7 +72,6 @@ CREATE TABLE orders (
     customer_phone2  VARCHAR(20),
     address          TEXT         NOT NULL,
     city             VARCHAR(100) NOT NULL,
-    wilaya           VARCHAR(100),
     zip_code         VARCHAR(10),
     notes            TEXT,
     -- Amounts
@@ -221,4 +220,4 @@ CREATE INDEX idx_stock_alerts_resolved ON stock_alerts(resolved);
 -- Default admin user (password will be set by DataInitializer)
 -- Ozon Express delivery provider
 INSERT INTO delivery_providers (name, code, api_base_url, active)
-VALUES ('Ozon Express', 'OZON_EXPRESS', 'https://api.ozonexpress.dz', TRUE);
+VALUES ('Ozon Express', 'OZON_EXPRESS', 'https://api.ozonexpress.ma', TRUE);
