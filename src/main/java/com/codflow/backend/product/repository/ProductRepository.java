@@ -18,8 +18,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     boolean existsBySku(String sku);
 
     @Query("SELECT p FROM Product p WHERE p.active = true AND " +
-           "(:search IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(:search IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) " +
+           "OR LOWER(p.sku) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))")
     Page<Product> searchProducts(String search, Pageable pageable);
 
     @Query("SELECT p FROM Product p WHERE p.active = true AND p.alertEnabled = true AND p.currentStock <= p.minThreshold")
