@@ -1,0 +1,65 @@
+package com.codflow.backend.order.dto;
+
+import com.codflow.backend.order.enums.OrderSource;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+@Getter
+@Setter
+public class CreateOrderRequest {
+
+    private String orderNumber;
+
+    private OrderSource source = OrderSource.MANUAL;
+
+    @NotBlank(message = "Le nom du client est obligatoire")
+    private String customerName;
+
+    @NotBlank(message = "Le téléphone du client est obligatoire")
+    private String customerPhone;
+
+    private String customerPhone2;
+
+    @NotBlank(message = "L'adresse est obligatoire")
+    private String address;
+
+    @NotBlank(message = "La ville est obligatoire")
+    private String city;
+
+    private String wilaya;
+    private String zipCode;
+    private String notes;
+
+    private BigDecimal shippingCost = BigDecimal.ZERO;
+
+    private String shopifyOrderId;
+    private String externalRef;
+
+    @NotEmpty(message = "La commande doit contenir au moins un article")
+    @Valid
+    private List<OrderItemRequest> items;
+
+    @Getter
+    @Setter
+    public static class OrderItemRequest {
+        private Long productId;
+
+        @NotBlank(message = "Le nom du produit est obligatoire")
+        private String productName;
+
+        private String productSku;
+
+        @NotNull
+        private Integer quantity = 1;
+
+        @NotNull
+        private BigDecimal unitPrice;
+    }
+}

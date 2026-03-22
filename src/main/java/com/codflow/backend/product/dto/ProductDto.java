@@ -1,0 +1,26 @@
+package com.codflow.backend.product.dto;
+
+import lombok.Builder;
+import lombok.Getter;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Getter
+@Builder
+public class ProductDto {
+    private Long id;
+    private String sku;
+    private String name;
+    private String description;
+    private BigDecimal price;
+    private String imageUrl;
+    private boolean active;
+    private int currentStock;
+    private int minThreshold;
+    private boolean alertEnabled;
+    private boolean lowStock;
+    private boolean outOfStock;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
