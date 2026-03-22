@@ -29,9 +29,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         AND (:source IS NULL OR o.source = :source)
         AND (:assignedTo IS NULL OR o.assignedTo.id = :assignedTo)
         AND (:search IS NULL OR
-             LOWER(o.customerName) LIKE LOWER(CONCAT('%', :search, '%')) OR
-             LOWER(o.customerPhone) LIKE LOWER(CONCAT('%', :search, '%')) OR
-             LOWER(o.orderNumber) LIKE LOWER(CONCAT('%', :search, '%')))
+             LOWER(o.customerName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
+             LOWER(o.customerPhone) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
+             LOWER(o.orderNumber) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
         AND (:from IS NULL OR o.createdAt >= :from)
         AND (:to IS NULL OR o.createdAt <= :to)
         """)
