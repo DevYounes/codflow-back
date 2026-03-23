@@ -63,7 +63,7 @@ public class AnalyticsService {
         // Rates
         double confirmationRate = totalOrders > 0 ? round((double) confirmedOrders / totalOrders * 100) : 0;
         double cancellationRate = totalOrders > 0 ? round((double) cancelledOrders / totalOrders * 100) : 0;
-        long totalDeliveryAttempted = deliveredOrders + returnedOrders;
+        long totalDeliveryAttempted = deliveredOrders + returnedOrders + inDeliveryOrders;
         double deliverySuccessRate = totalDeliveryAttempted > 0 ? round((double) deliveredOrders / totalDeliveryAttempted * 100) : 0;
         double returnRate = totalDeliveryAttempted > 0 ? round((double) returnedOrders / totalDeliveryAttempted * 100) : 0;
 
@@ -97,7 +97,7 @@ public class AnalyticsService {
                 .returnedOrders(returnedOrders)
                 .deliverySuccessRate(deliverySuccessRate)
                 .returnRate(returnRate)
-                .totalRevenue(calculateRevenue(null))
+                .totalRevenue(calculateRevenue(OrderStatus.LIVRE))
                 .confirmedRevenue(calculateRevenue(OrderStatus.CONFIRME))
                 .averageOrderValue(calculateAverageOrderValue())
                 .lowStockProducts(lowStockProducts)
@@ -154,8 +154,16 @@ public class AnalyticsService {
         long returned = shipmentRepository.countByStatus(ShipmentStatus.RETURNED);
         long failed = shipmentRepository.countByStatus(ShipmentStatus.FAILED_DELIVERY);
 
-        double deliveryRate = totalShipments > 0 ? round((double) delivered / totalShipments * 100) : 0;
-        double returnRate = totalShipments > 0 ? round((double) returned / totalShipments * 100) : 0;
+        // Taux basé sur les commandes expédiées (évite division par 0 si table shipments vide)
+        long ordersDelivered = orderRepository.countByStatus(OrderStatus.LIVRE);
+        long ordersReturned  = orderRepository.countByStatus(OrderStatus.RETOURNE);
+        long ordersInTransit = orderRepository.countByStatus(OrderStatus.EN_LIVRAISON) +
+                               orderRepository.countByStatus(OrderStatus.ENVOYE) +
+                               orderRepository.countByStatus(OrderStatus.EN_PREPARATION);
+        long ordersExpedited = ordersDelivered + ordersReturned + ordersInTransit;
+
+        double deliveryRate = ordersExpedited > 0 ? round((double) ordersDelivered / ordersExpedited * 100) : 0;
+        double returnRate   = ordersExpedited > 0 ? round((double) ordersReturned  / ordersExpedited * 100) : 0;
 
         return DeliveryStatsDto.builder()
                 .totalShipments(totalShipments)
