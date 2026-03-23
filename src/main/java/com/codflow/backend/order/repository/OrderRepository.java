@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -79,4 +80,18 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     List<Object[]> getDailyStatsForAgent(@Param("agentId") Long agentId,
                                          @Param("from") LocalDateTime from,
                                          @Param("to") LocalDateTime to);
+
+    // ---- Revenue ----
+
+    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o")
+    BigDecimal sumTotalRevenue();
+
+    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.status = :status")
+    BigDecimal sumRevenueByStatus(@Param("status") OrderStatus status);
+
+    @Query("SELECT COALESCE(AVG(o.totalAmount), 0) FROM Order o WHERE o.totalAmount IS NOT NULL")
+    BigDecimal avgOrderValue();
+
+    @Query("SELECT o.source, COUNT(o) FROM Order o WHERE o.source IS NOT NULL GROUP BY o.source")
+    List<Object[]> countGroupBySource();
 }

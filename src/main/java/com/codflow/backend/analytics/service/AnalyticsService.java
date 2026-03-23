@@ -4,6 +4,7 @@ import com.codflow.backend.analytics.dto.*;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
+import com.codflow.backend.order.enums.OrderSource;
 import com.codflow.backend.order.enums.OrderStatus;
 import com.codflow.backend.order.repository.OrderRepository;
 import com.codflow.backend.product.repository.ProductRepository;
@@ -269,22 +270,27 @@ public class AnalyticsService {
     }
 
     private long countCancelledForAgent(Long agentId) {
-        // Simplified - would need a more specific query for production
-        return 0;
+        return orderRepository.countByAgentAndStatuses(agentId, CANCELLED_STATUSES);
     }
 
     private BigDecimal calculateRevenue(OrderStatus status) {
-        // Simplified - would use native query for performance
-        return BigDecimal.ZERO;
+        if (status == null) {
+            return orderRepository.sumTotalRevenue();
+        }
+        return orderRepository.sumRevenueByStatus(status);
     }
 
     private BigDecimal calculateAverageOrderValue() {
-        return BigDecimal.ZERO;
+        return orderRepository.avgOrderValue();
     }
 
     private Map<String, Long> getOrdersBySource() {
-        // Simplified
-        return new HashMap<>();
+        return orderRepository.countGroupBySource()
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> ((OrderSource) row[0]).name(),
+                        row -> (Long) row[1]
+                ));
     }
 
     private Map<String, Long> getShipmentsByStatus() {
