@@ -47,18 +47,13 @@ public class OzonCityService {
         JsonNode root = objectMapper.readTree(json);
         List<OzonCityDto> cities = new ArrayList<>();
 
-        // Handle both array root and object with a data/cities key
-        JsonNode arr = root.isArray() ? root
-                     : root.has("data")   ? root.path("data")
-                     : root.has("cities") ? root.path("cities")
-                     : root;
-
-        if (arr.isArray()) {
-            arr.forEach(node -> {
-                // Ozon uses uppercase keys: CITY_ID / CITY_NAME
-                // Also handle lowercase variants: id, name
-                String code = firstText(node, "CITY_ID", "city_id", "id", "ID", "code", "CODE");
-                String name = firstText(node, "CITY_NAME", "city_name", "name", "NAME", "label", "LABEL");
+        // Response: { "CITIES": { "37": { "ID": 37, "NAME": "Agadir", ... }, ... } }
+        JsonNode citiesNode = root.path("CITIES");
+        if (citiesNode.isObject()) {
+            citiesNode.fields().forEachRemaining(entry -> {
+                JsonNode city = entry.getValue();
+                String code = city.path("ID").asText(null);
+                String name = city.path("NAME").asText(null);
                 if (code != null && name != null) {
                     cities.add(new OzonCityDto(code, name));
                 }
@@ -67,14 +62,5 @@ public class OzonCityService {
 
         log.debug("Parsed {} cities from Ozon Express", cities.size());
         return cities;
-    }
-
-    private String firstText(JsonNode node, String... keys) {
-        for (String key : keys) {
-            if (node.has(key) && !node.path(key).asText("").isBlank()) {
-                return node.path(key).asText();
-            }
-        }
-        return null;
     }
 }
