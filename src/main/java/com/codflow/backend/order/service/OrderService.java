@@ -32,7 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -280,6 +282,17 @@ public class OrderService {
                 }
             }
         });
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Long> countByStatus() {
+        Map<String, Long> result = new LinkedHashMap<>();
+        orderRepository.countGroupByStatus().forEach(row -> {
+            OrderStatus status = (OrderStatus) row[0];
+            Long count = (Long) row[1];
+            result.put(status.name(), count);
+        });
+        return result;
     }
 
     private Order getOrderById(Long id) {

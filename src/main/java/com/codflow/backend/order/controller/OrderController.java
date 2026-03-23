@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/orders")
@@ -96,6 +97,13 @@ public class OrderController {
             @Valid @RequestBody AssignOrderRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.success("Commande assignée", orderService.assignOrder(id, request, principal)));
+    }
+
+    @GetMapping("/count-by-status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Nombre de commandes groupé par statut")
+    public ResponseEntity<ApiResponse<Map<String, Long>>> countByStatus() {
+        return ResponseEntity.ok(ApiResponse.success(orderService.countByStatus()));
     }
 
     @PostMapping("/bulk-assign")
