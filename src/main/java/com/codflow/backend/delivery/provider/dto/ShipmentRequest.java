@@ -16,6 +16,8 @@ public class ShipmentRequest {
     private String address;
     private String city;
     private String ville;
+    /** Ozon Express city ID — set by the agent when confirming the order */
+    private String deliveryCityId;
     private String zipCode;
     private BigDecimal codAmount;  // Amount to collect on delivery
     private BigDecimal shippingCost;

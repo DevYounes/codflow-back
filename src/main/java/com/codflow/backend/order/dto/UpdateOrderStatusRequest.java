@@ -13,4 +13,10 @@ public class UpdateOrderStatusRequest {
     private OrderStatus status;
 
     private String notes;
+
+    /**
+     * Ozon Express city ID — required when status = CONFIRME.
+     * The frontend fetches the list from GET /api/v1/ozon/cities.
+     */
+    private String deliveryCityId;
 }

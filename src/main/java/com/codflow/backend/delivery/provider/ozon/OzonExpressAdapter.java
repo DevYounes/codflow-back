@@ -4,13 +4,13 @@ import com.codflow.backend.delivery.provider.DeliveryProviderAdapter;
 import com.codflow.backend.delivery.provider.dto.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
@@ -20,9 +20,15 @@ import java.util.List;
 
 /**
  * Ozon Express delivery provider adapter.
- * Implements the DeliveryProviderAdapter interface for Ozon Express MA API.
  *
- * API Documentation: Contact Ozon Express for API specs.
+ * API base: https://api.ozonexpress.ma
+ * Auth: credentials in URL path — /customers/{customerId}/{apiKey}/...
+ *
+ * Provider config mapping (delivery_providers table):
+ *   api_base_url = https://api.ozonexpress.ma
+ *   api_key      = Your Ozon API key
+ *   api_token    = Your Ozon customer ID (the {YOUR_ID} part of the URL)
+ *
  * To support another delivery company, create a new class implementing DeliveryProviderAdapter.
  */
 @Slf4j
@@ -32,60 +38,89 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
 
     private static final String PROVIDER_CODE = "OZON_EXPRESS";
     private static final String PROVIDER_NAME = "Ozon Express";
+    private static final String BASE_URL      = "https://api.ozonexpress.ma";
 
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
 
     @Override
-    public String getProviderCode() {
-        return PROVIDER_CODE;
-    }
+    public String getProviderCode() { return PROVIDER_CODE; }
 
     @Override
-    public String getProviderName() {
-        return PROVIDER_NAME;
-    }
+    public String getProviderName() { return PROVIDER_NAME; }
 
+    // -------------------------------------------------------------------------
+    // Create shipment — POST /customers/{id}/{key}/add-parcel (form-data)
+    // -------------------------------------------------------------------------
     @Override
     public ShipmentResponse createShipment(ShipmentRequest request, ProviderConfig config) {
         try {
-            WebClient client = buildClient(config);
+            String customerId = config.apiToken();   // Ozon customer ID
+            String apiKey     = config.apiKey();     // Ozon API key
+            String baseUrl    = config.apiBaseUrl() != null ? config.apiBaseUrl() : BASE_URL;
 
-            ObjectNode body = objectMapper.createObjectNode();
-            body.put("reference", request.getOrderNumber());
-            body.put("recipient_name", request.getCustomerName());
-            body.put("recipient_phone", request.getCustomerPhone());
-            body.put("recipient_address", request.getAddress());
-            body.put("ville", request.getVille());
-            body.put("commune", request.getCity());
-            body.put("cod_amount", request.getCodAmount());
-            body.put("description", buildProductDescription(request));
-            if (request.getNotes() != null) {
-                body.put("notes", request.getNotes());
+            if (customerId == null || apiKey == null) {
+                return ShipmentResponse.builder()
+                        .success(false)
+                        .message("Configuration Ozon Express incomplète (customerId / apiKey manquant)")
+                        .build();
             }
 
+            // deliveryCityId must be set — warn if missing
+            String cityId = request.getDeliveryCityId();
+            if (cityId == null || cityId.isBlank()) {
+                log.warn("deliveryCityId not set for order {}; parcel-city will be empty", request.getOrderNumber());
+                cityId = "";
+            }
+
+            // Build form-data
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("parcel-receiver", request.getCustomerName());
+            form.add("parcel-phone",    request.getCustomerPhone());
+            form.add("parcel-city",     cityId);
+            form.add("parcel-address",  request.getAddress());
+            form.add("parcel-price",    request.getCodAmount().toPlainString());
+            form.add("parcel-stock",    "1");   // always from stock
+            form.add("parcel-open",     "1");   // allow opening by default
+
+            if (request.getOrderNumber() != null) {
+                form.add("tracking-number", request.getOrderNumber());
+            }
+            if (request.getNotes() != null && !request.getNotes().isBlank()) {
+                form.add("parcel-note", request.getNotes());
+            }
+            if (request.getItems() != null && !request.getItems().isEmpty()) {
+                form.add("parcel-nature", buildNature(request));
+                form.add("products",      buildProductsJson(request));
+            }
+
+            WebClient client = webClientBuilder.baseUrl(baseUrl).build();
+
             String responseBody = client.post()
-                    .uri("/api/v1/shipments")
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                    .bodyValue(body.toString())
+                    .uri("/customers/{id}/{key}/add-parcel", customerId, apiKey)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(BodyInserters.fromFormData(form))
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
 
-            JsonNode response = objectMapper.readTree(responseBody);
-            boolean success = response.path("success").asBoolean(false);
+            JsonNode json = objectMapper.readTree(responseBody);
+            String trackingNumber = json.path("TRACKING-NUMBER").asText(null);
+            boolean success = trackingNumber != null && !trackingNumber.isBlank();
 
             return ShipmentResponse.builder()
                     .success(success)
-                    .trackingNumber(response.path("tracking_number").asText(null))
-                    .providerOrderId(response.path("id").asText(null))
-                    .status(response.path("status").asText("CREATED"))
-                    .message(response.path("message").asText())
+                    .trackingNumber(trackingNumber)
+                    .providerOrderId(trackingNumber)
+                    .status(success ? "CREATED" : "FAILED")
+                    .message(success
+                            ? "Colis créé — " + json.path("CITY_NAME").asText("")
+                            : "Réponse Ozon inattendue: " + responseBody)
                     .rawResponse(responseBody)
                     .build();
 
         } catch (WebClientResponseException e) {
-            log.error("Ozon Express API error creating shipment for {}: {} - {}",
+            log.error("Ozon Express API error creating shipment for {}: {} — {}",
                     request.getOrderNumber(), e.getStatusCode(), e.getResponseBodyAsString());
             return ShipmentResponse.builder()
                     .success(false)
@@ -101,77 +136,58 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Request pickup — not part of the documented API; kept as stub
+    // -------------------------------------------------------------------------
     @Override
     public PickupResponse requestPickup(PickupRequest request, ProviderConfig config) {
-        try {
-            WebClient client = buildClient(config);
-
-            ObjectNode body = objectMapper.createObjectNode();
-            ArrayNode trackings = body.putArray("tracking_numbers");
-            request.getTrackingNumbers().forEach(trackings::add);
-            if (request.getPickupDate() != null) {
-                body.put("pickup_date", request.getPickupDate().toString());
-            }
-            if (request.getNotes() != null) {
-                body.put("notes", request.getNotes());
-            }
-
-            String responseBody = client.post()
-                    .uri("/api/v1/pickups")
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                    .bodyValue(body.toString())
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-
-            JsonNode response = objectMapper.readTree(responseBody);
-            return PickupResponse.builder()
-                    .success(response.path("success").asBoolean(false))
-                    .pickupId(response.path("pickup_id").asText(null))
-                    .scheduledDate(response.path("scheduled_date").asText(null))
-                    .message(response.path("message").asText())
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Error requesting Ozon Express pickup", e);
-            return PickupResponse.builder()
-                    .success(false)
-                    .message("Erreur demande de ramassage: " + e.getMessage())
-                    .build();
-        }
+        // Ozon Express does not expose a pickup API in the current documentation.
+        // Pickup is handled automatically once the parcel is registered.
+        log.info("Ozon Express pickup requested for {} parcels (handled automatically by Ozon)", request.getTrackingNumbers().size());
+        return PickupResponse.builder()
+                .success(true)
+                .message("Ozon Express gère le ramassage automatiquement après enregistrement du colis")
+                .build();
     }
 
+    // -------------------------------------------------------------------------
+    // Track shipment — GET /customers/{id}/{key}/get-parcel/{tracking}
+    // -------------------------------------------------------------------------
     @Override
     public TrackingInfo trackShipment(String trackingNumber, ProviderConfig config) {
         try {
-            WebClient client = buildClient(config);
+            String customerId = config.apiToken();
+            String apiKey     = config.apiKey();
+            String baseUrl    = config.apiBaseUrl() != null ? config.apiBaseUrl() : BASE_URL;
+
+            WebClient client = webClientBuilder.baseUrl(baseUrl).build();
 
             String responseBody = client.get()
-                    .uri("/api/v1/shipments/{tracking}", trackingNumber)
+                    .uri("/customers/{id}/{key}/get-parcel/{tracking}", customerId, apiKey, trackingNumber)
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
 
-            JsonNode response = objectMapper.readTree(responseBody);
+            JsonNode json = objectMapper.readTree(responseBody);
             List<TrackingInfo.TrackingEvent> events = new ArrayList<>();
 
-            JsonNode eventsNode = response.path("events");
-            if (eventsNode.isArray()) {
-                eventsNode.forEach(eventNode -> events.add(
+            JsonNode history = json.path("HISTORY");
+            if (history.isArray()) {
+                history.forEach(node -> events.add(
                         TrackingInfo.TrackingEvent.builder()
-                                .status(eventNode.path("status").asText())
-                                .description(eventNode.path("description").asText())
-                                .location(eventNode.path("location").asText(null))
-                                .eventAt(LocalDateTime.now()) // Parse from API response
+                                .status(node.path("STATUS").asText())
+                                .description(node.path("COMMENT").asText(null))
+                                .location(node.path("CITY").asText(null))
+                                .eventAt(LocalDateTime.now())
                                 .build()
                 ));
             }
 
             return TrackingInfo.builder()
                     .trackingNumber(trackingNumber)
-                    .status(response.path("status").asText())
-                    .statusDescription(response.path("status_description").asText())
-                    .currentLocation(response.path("current_location").asText(null))
+                    .status(json.path("STATUS").asText("UNKNOWN"))
+                    .statusDescription(json.path("STATUS_LABEL").asText(null))
+                    .currentLocation(json.path("CITY_NAME").asText(null))
                     .events(events)
                     .build();
 
@@ -186,36 +202,43 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Cancel shipment — not documented; stub returning false
+    // -------------------------------------------------------------------------
     @Override
     public boolean cancelShipment(String trackingNumber, ProviderConfig config) {
-        try {
-            WebClient client = buildClient(config);
-            client.delete()
-                    .uri("/api/v1/shipments/{tracking}", trackingNumber)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-            return true;
-        } catch (Exception e) {
-            log.error("Error cancelling Ozon Express shipment {}", trackingNumber, e);
-            return false;
-        }
+        log.warn("Ozon Express cancel not supported via API for tracking {}", trackingNumber);
+        return false;
     }
 
-    private WebClient buildClient(ProviderConfig config) {
-        return webClientBuilder
-                .baseUrl(config.apiBaseUrl())
-                .defaultHeader("X-API-Key", config.apiKey() != null ? config.apiKey() : "")
-                .build();
-    }
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
-    private String buildProductDescription(ShipmentRequest request) {
-        if (request.getItems() == null || request.getItems().isEmpty()) {
-            return "Commande COD";
-        }
+    private String buildNature(ShipmentRequest request) {
         return request.getItems().stream()
                 .map(i -> i.getQuantity() + "x " + i.getProductName())
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("Commande COD");
+    }
+
+    /**
+     * Builds the 'products' JSON array expected by Ozon:
+     * [{"ref": "SKU001", "qnty": 2}, ...]
+     */
+    private String buildProductsJson(ShipmentRequest request) {
+        try {
+            var arr = objectMapper.createArrayNode();
+            for (var item : request.getItems()) {
+                var node = objectMapper.createObjectNode();
+                node.put("ref",  item.getProductSku() != null ? item.getProductSku() : item.getProductName());
+                node.put("qnty", item.getQuantity());
+                arr.add(node);
+            }
+            return objectMapper.writeValueAsString(arr);
+        } catch (Exception e) {
+            log.warn("Could not serialize products JSON for Ozon", e);
+            return "[]";
+        }
     }
 }

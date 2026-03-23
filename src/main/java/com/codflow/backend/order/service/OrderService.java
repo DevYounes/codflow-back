@@ -134,6 +134,9 @@ public class OrderService {
 
         if (newStatus.isConfirmed() && order.getConfirmedAt() == null) {
             order.setConfirmedAt(LocalDateTime.now());
+            if (request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()) {
+                order.setDeliveryCityId(request.getDeliveryCityId());
+            }
             // Deduct stock for confirmed orders
             deductStockForOrder(order);
         }
@@ -329,6 +332,7 @@ public class OrderService {
                 .address(order.getAddress())
                 .city(order.getCity())
                 .ville(order.getVille())
+                .deliveryCityId(order.getDeliveryCityId())
                 .zipCode(order.getZipCode())
                 .notes(order.getNotes())
                 .subtotal(order.getSubtotal())

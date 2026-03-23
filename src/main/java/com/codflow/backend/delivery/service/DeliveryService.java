@@ -280,6 +280,7 @@ public class DeliveryService {
                 .address(order.getAddress())
                 .city(order.getCity())
                 .ville(order.getVille())
+                .deliveryCityId(order.getDeliveryCityId())
                 .zipCode(order.getZipCode())
                 .codAmount(order.getTotalAmount())
                 .shippingCost(order.getShippingCost())

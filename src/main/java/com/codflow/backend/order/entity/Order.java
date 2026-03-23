@@ -50,6 +50,13 @@ public class Order extends BaseEntity {
     @Column(length = 100)
     private String ville;
 
+    /**
+     * Ozon Express city ID selected by the agent during confirmation.
+     * The customer may type "Casa" while Ozon requires the numeric city ID for Casablanca.
+     */
+    @Column(name = "delivery_city_id", length = 20)
+    private String deliveryCityId;
+
     @Column(name = "zip_code", length = 10)
     private String zipCode;
 
