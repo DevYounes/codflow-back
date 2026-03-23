@@ -51,12 +51,12 @@ public class OzonCityService {
 
         if (arr.isArray()) {
             arr.forEach(node -> {
-                String id   = node.has("id")   ? node.path("id").asText()
+                String code = node.has("id")   ? node.path("id").asText()
                             : node.has("ID")   ? node.path("ID").asText()   : null;
                 String name = node.has("name") ? node.path("name").asText()
                             : node.has("NAME") ? node.path("NAME").asText() : null;
-                if (id != null && name != null) {
-                    cities.add(new OzonCityDto(id, name));
+                if (code != null && name != null) {
+                    cities.add(new OzonCityDto(code, name));
                 }
             });
         }
