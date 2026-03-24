@@ -4,6 +4,7 @@ import com.codflow.backend.common.dto.ApiResponse;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
+import com.codflow.backend.delivery.dto.UpdateProviderConfigRequest;
 import com.codflow.backend.delivery.entity.DeliveryProviderConfig;
 import com.codflow.backend.delivery.provider.DeliveryProviderRegistry;
 import com.codflow.backend.delivery.repository.DeliveryProviderRepository;
@@ -68,5 +69,22 @@ public class DeliveryController {
     @Operation(summary = "Lister les transporteurs enregistrés dans le système")
     public ResponseEntity<ApiResponse<List<String>>> getRegisteredProviders() {
         return ResponseEntity.ok(ApiResponse.success(providerRegistry.getRegisteredProviderCodes()));
+    }
+
+    @PutMapping("/providers/{id}/config")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Mettre à jour les credentials d'un transporteur (apiKey, apiToken, apiBaseUrl)")
+    public ResponseEntity<ApiResponse<DeliveryProviderConfig>> updateProviderConfig(
+            @PathVariable Long id,
+            @RequestBody UpdateProviderConfigRequest request) {
+        DeliveryProviderConfig provider = providerRepository.findById(id)
+                .orElseThrow(() -> new com.codflow.backend.common.exception.ResourceNotFoundException("Transporteur", id));
+
+        if (request.getApiKey() != null)     provider.setApiKey(request.getApiKey());
+        if (request.getApiToken() != null)   provider.setApiToken(request.getApiToken());
+        if (request.getApiBaseUrl() != null) provider.setApiBaseUrl(request.getApiBaseUrl());
+        if (request.getActive() != null)     provider.setActive(request.getActive());
+
+        return ResponseEntity.ok(ApiResponse.success("Configuration mise à jour", providerRepository.save(provider)));
     }
 }
