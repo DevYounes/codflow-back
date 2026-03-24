@@ -93,9 +93,10 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             if (request.getNotes() != null && !request.getNotes().isBlank()) {
                 form.add("parcel-note", request.getNotes());
             }
+            // parcel-stock=1 requires products — always send it
+            form.add("products", buildProductsJson(request));
             if (request.getItems() != null && !request.getItems().isEmpty()) {
                 form.add("parcel-nature", buildNature(request));
-                form.add("products",      buildProductsJson(request));
             }
 
             WebClient client = webClientBuilder.baseUrl(baseUrl).build();
@@ -239,16 +240,24 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
     private String buildProductsJson(ShipmentRequest request) {
         try {
             var arr = objectMapper.createArrayNode();
-            for (var item : request.getItems()) {
+            if (request.getItems() != null && !request.getItems().isEmpty()) {
+                for (var item : request.getItems()) {
+                    var node = objectMapper.createObjectNode();
+                    node.put("ref",  item.getProductSku() != null ? item.getProductSku() : item.getProductName());
+                    node.put("qnty", item.getQuantity());
+                    arr.add(node);
+                }
+            } else {
+                // Fallback: Ozon requires at least one product entry for stock parcels
                 var node = objectMapper.createObjectNode();
-                node.put("ref",  item.getProductSku() != null ? item.getProductSku() : item.getProductName());
-                node.put("qnty", item.getQuantity());
+                node.put("ref",  request.getOrderNumber() != null ? request.getOrderNumber() : "COMMANDE");
+                node.put("qnty", 1);
                 arr.add(node);
             }
             return objectMapper.writeValueAsString(arr);
         } catch (Exception e) {
             log.warn("Could not serialize products JSON for Ozon", e);
-            return "[]";
+            return "[{\"ref\":\"COMMANDE\",\"qnty\":1}]";
         }
     }
 }
