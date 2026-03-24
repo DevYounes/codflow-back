@@ -26,7 +26,9 @@ public final class PhoneNormalizer {
             digits = digits.substring(5);
         } else if (digits.startsWith("212") && digits.length() >= 12) {
             digits = digits.substring(3);
-        } else if (digits.startsWith("0") && digits.length() >= 10) {
+        }
+        // Second pass: strip leading 0 left after country-code removal (e.g. +2120661… → 0661…)
+        if (digits.startsWith("0") && digits.length() >= 10) {
             digits = digits.substring(1);
         }
 
