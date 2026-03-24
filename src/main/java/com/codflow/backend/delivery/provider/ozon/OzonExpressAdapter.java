@@ -87,9 +87,6 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             form.add("parcel-stock",    "0");   // 0 = ramassage (pickup by Ozon)
             form.add("parcel-open",     "1");   // allow opening by default
 
-            if (request.getOrderNumber() != null) {
-                form.add("tracking-number", request.getOrderNumber());
-            }
             if (request.getNotes() != null && !request.getNotes().isBlank()) {
                 form.add("parcel-note", request.getNotes());
             }
@@ -109,7 +106,8 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
                     .block();
 
             JsonNode json = objectMapper.readTree(responseBody);
-            String trackingNumber = json.path("TRACKING-NUMBER").asText(null);
+            JsonNode parcel = json.path("ADD-PARCEL").path("NEW-PARCEL");
+            String trackingNumber = parcel.path("TRACKING-NUMBER").asText(null);
             boolean success = trackingNumber != null && !trackingNumber.isBlank();
 
             return ShipmentResponse.builder()
@@ -118,7 +116,7 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
                     .providerOrderId(trackingNumber)
                     .status(success ? "CREATED" : "FAILED")
                     .message(success
-                            ? "Colis créé — " + json.path("CITY_NAME").asText("")
+                            ? "Colis créé — " + parcel.path("CITY_ID").asText("")
                             : "Réponse Ozon inattendue: " + responseBody)
                     .rawResponse(responseBody)
                     .build();
