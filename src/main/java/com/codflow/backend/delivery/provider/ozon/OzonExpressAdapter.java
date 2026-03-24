@@ -62,10 +62,10 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             String apiKey     = StringUtils.hasText(config.apiKey())     ? config.apiKey()     : properties.getApiKey();
             String baseUrl    = StringUtils.hasText(config.apiBaseUrl()) ? config.apiBaseUrl() : properties.getApiBaseUrl();
 
-            if (customerId == null || apiKey == null) {
+            if (!StringUtils.hasText(customerId) || !StringUtils.hasText(apiKey)) {
                 return ShipmentResponse.builder()
                         .success(false)
-                        .message("Configuration Ozon Express incomplète (customerId / apiKey manquant)")
+                        .message("Configuration Ozon Express incomplète (customerId / apiKey manquant). Définir OZON_CUSTOMER_ID et OZON_API_KEY.")
                         .build();
             }
 
@@ -162,6 +162,12 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             String customerId = StringUtils.hasText(config.apiToken())   ? config.apiToken()   : properties.getCustomerId();
             String apiKey     = StringUtils.hasText(config.apiKey())     ? config.apiKey()     : properties.getApiKey();
             String baseUrl    = StringUtils.hasText(config.apiBaseUrl()) ? config.apiBaseUrl() : properties.getApiBaseUrl();
+
+            if (!StringUtils.hasText(customerId) || !StringUtils.hasText(apiKey)) {
+                log.error("Ozon Express credentials not configured for tracking {}", trackingNumber);
+                return TrackingInfo.builder().trackingNumber(trackingNumber).status("UNKNOWN")
+                        .statusDescription("Credentials Ozon Express non configurés").events(List.of()).build();
+            }
 
             WebClient client = webClientBuilder.baseUrl(baseUrl).build();
 
