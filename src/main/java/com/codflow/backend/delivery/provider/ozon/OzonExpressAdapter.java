@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
@@ -42,6 +43,7 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
 
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
+    private final OzonExpressProperties properties;
 
     @Override
     public String getProviderCode() { return PROVIDER_CODE; }
@@ -55,9 +57,10 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
     @Override
     public ShipmentResponse createShipment(ShipmentRequest request, ProviderConfig config) {
         try {
-            String customerId = config.apiToken();   // Ozon customer ID
-            String apiKey     = config.apiKey();     // Ozon API key
-            String baseUrl    = config.apiBaseUrl() != null ? config.apiBaseUrl() : BASE_URL;
+            // DB values take precedence; fall back to environment variables
+            String customerId = StringUtils.hasText(config.apiToken())   ? config.apiToken()   : properties.getCustomerId();
+            String apiKey     = StringUtils.hasText(config.apiKey())     ? config.apiKey()     : properties.getApiKey();
+            String baseUrl    = StringUtils.hasText(config.apiBaseUrl()) ? config.apiBaseUrl() : properties.getApiBaseUrl();
 
             if (customerId == null || apiKey == null) {
                 return ShipmentResponse.builder()
@@ -156,9 +159,9 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
     @Override
     public TrackingInfo trackShipment(String trackingNumber, ProviderConfig config) {
         try {
-            String customerId = config.apiToken();
-            String apiKey     = config.apiKey();
-            String baseUrl    = config.apiBaseUrl() != null ? config.apiBaseUrl() : BASE_URL;
+            String customerId = StringUtils.hasText(config.apiToken())   ? config.apiToken()   : properties.getCustomerId();
+            String apiKey     = StringUtils.hasText(config.apiKey())     ? config.apiKey()     : properties.getApiKey();
+            String baseUrl    = StringUtils.hasText(config.apiBaseUrl()) ? config.apiBaseUrl() : properties.getApiBaseUrl();
 
             WebClient client = webClientBuilder.baseUrl(baseUrl).build();
 
