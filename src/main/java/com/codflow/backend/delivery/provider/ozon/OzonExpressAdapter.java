@@ -173,8 +173,21 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             String responseBody = client.get()
                     .uri("/customers/{id}/{key}/get-parcel/{tracking}", customerId, apiKey, trackingNumber)
                     .retrieve()
+                    .onStatus(status -> status.value() == 404, response -> {
+                        log.warn("Ozon Express: colis introuvable pour le tracking {} (404) — probable ancien numéro invalide", trackingNumber);
+                        return reactor.core.publisher.Mono.empty();
+                    })
                     .bodyToMono(String.class)
                     .block();
+
+            if (responseBody == null) {
+                return TrackingInfo.builder()
+                        .trackingNumber(trackingNumber)
+                        .status("NOT_FOUND")
+                        .statusDescription("Colis introuvable chez Ozon Express")
+                        .events(List.of())
+                        .build();
+            }
 
             JsonNode json = objectMapper.readTree(responseBody);
             List<TrackingInfo.TrackingEvent> events = new ArrayList<>();
