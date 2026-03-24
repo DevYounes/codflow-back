@@ -1,5 +1,6 @@
 package com.codflow.backend.importer.service;
 
+import com.codflow.backend.common.util.PhoneNormalizer;
 import com.codflow.backend.importer.dto.ImportResultDto;
 import com.codflow.backend.order.dto.CreateOrderRequest;
 import com.codflow.backend.order.enums.OrderSource;
@@ -131,8 +132,9 @@ public class ExcelImportService {
         if (city == null || city.isBlank()) throw new IllegalArgumentException("Ville manquante");
 
         request.setCustomerName(customerName.trim());
-        request.setCustomerPhone(phone.trim());
-        request.setCustomerPhone2(getCellString(row, COL_PHONE2));
+        request.setCustomerPhone(PhoneNormalizer.toLocalFormat(phone));
+        String rawPhone2 = getCellString(row, COL_PHONE2);
+        request.setCustomerPhone2(PhoneNormalizer.toLocalFormat(rawPhone2));
         request.setAddress(address.trim());
         request.setCity(city.trim());
         request.setVille(getCellString(row, COL_VILLE));

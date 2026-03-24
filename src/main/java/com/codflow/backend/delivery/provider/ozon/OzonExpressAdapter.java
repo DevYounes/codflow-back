@@ -1,5 +1,6 @@
 package com.codflow.backend.delivery.provider.ozon;
 
+import com.codflow.backend.common.util.PhoneNormalizer;
 import com.codflow.backend.delivery.provider.DeliveryProviderAdapter;
 import com.codflow.backend.delivery.provider.dto.*;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -79,7 +80,7 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             // Build form-data
             MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
             form.add("parcel-receiver", request.getCustomerName());
-            form.add("parcel-phone",    request.getCustomerPhone());
+            form.add("parcel-phone",    PhoneNormalizer.toLocalFormat(request.getCustomerPhone()));
             form.add("parcel-city",     cityId);
             form.add("parcel-address",  request.getAddress());
             form.add("parcel-price",    request.getCodAmount().toPlainString());

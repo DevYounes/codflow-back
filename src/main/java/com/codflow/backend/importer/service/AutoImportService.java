@@ -1,5 +1,6 @@
 package com.codflow.backend.importer.service;
 
+import com.codflow.backend.common.util.PhoneNormalizer;
 import com.codflow.backend.config.service.SystemSettingService;
 import com.codflow.backend.importer.dto.ImportResultDto;
 import com.codflow.backend.order.dto.CreateOrderRequest;
@@ -243,7 +244,7 @@ public class AutoImportService {
         if (blank(city))         throw new IllegalArgumentException("Ville manquante (colonne 'City')");
 
         req.setCustomerName(customerName.trim());
-        req.setCustomerPhone(phone.trim());
+        req.setCustomerPhone(PhoneNormalizer.toLocalFormat(phone));
         req.setAddress(address.trim());
         req.setVille(city.trim());
         req.setCity(city.trim());
