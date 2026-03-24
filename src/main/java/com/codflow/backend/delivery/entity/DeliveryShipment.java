@@ -7,6 +7,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -58,7 +60,8 @@ public class DeliveryShipment extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
-    @Column(name = "raw_response", columnDefinition = "JSONB")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "raw_response", columnDefinition = "jsonb")
     private String rawResponse;
 
     @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

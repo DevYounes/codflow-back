@@ -29,7 +29,7 @@ public class DeliveryController {
     private final DeliveryProviderRegistry providerRegistry;
 
     @PostMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Créer un envoi pour une commande confirmée")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> createShipment(
             @Valid @RequestBody CreateShipmentRequest request) {
