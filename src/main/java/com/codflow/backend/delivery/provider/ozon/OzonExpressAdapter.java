@@ -84,7 +84,7 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             form.add("parcel-city",     cityId);
             form.add("parcel-address",  request.getAddress());
             form.add("parcel-price",    request.getCodAmount().toPlainString());
-            form.add("parcel-stock",    "1");   // always from stock
+            form.add("parcel-stock",    "0");   // 0 = ramassage (pickup by Ozon)
             form.add("parcel-open",     "1");   // allow opening by default
 
             if (request.getOrderNumber() != null) {
@@ -93,10 +93,9 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             if (request.getNotes() != null && !request.getNotes().isBlank()) {
                 form.add("parcel-note", request.getNotes());
             }
-            // parcel-stock=1 requires products — always send it
-            form.add("products", buildProductsJson(request));
             if (request.getItems() != null && !request.getItems().isEmpty()) {
                 form.add("parcel-nature", buildNature(request));
+                form.add("products",      buildProductsJson(request));
             }
 
             WebClient client = webClientBuilder.baseUrl(baseUrl).build();
