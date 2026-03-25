@@ -182,33 +182,40 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
                     .block();
 
             JsonNode json = objectMapper.readTree(responseBody);
-            List<TrackingInfo.TrackingEvent> events = new ArrayList<>();
+            JsonNode tracking = json.path("TRACKING");
 
-            JsonNode history = json.path("HISTORY");
-            if (history.isArray()) {
-                history.forEach(node -> {
-                    LocalDateTime eventAt = LocalDateTime.now();
-                    String dateStr = node.path("DATE").asText(null);
-                    if (dateStr != null && !dateStr.isBlank()) {
-                        try {
-                            eventAt = LocalDateTime.parse(dateStr,
-                                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-                        } catch (Exception ignored) {}
-                    }
-                    events.add(TrackingInfo.TrackingEvent.builder()
-                            .status(node.path("STATUS_LABEL").asText(node.path("STATUS").asText()))
-                            .description(node.path("COMMENT").asText(null))
-                            .location(node.path("CITY").asText(null))
-                            .eventAt(eventAt)
-                            .build());
-                });
+            // Check API-level error
+            String result = tracking.path("RESULT").asText("ERROR");
+            if (!"SUCCESS".equals(result)) {
+                return TrackingInfo.builder().trackingNumber(trackingNumber).status("UNKNOWN")
+                        .statusDescription(tracking.path("MESSAGE").asText("Erreur tracking")).events(List.of()).build();
             }
+
+            // Parse HISTORY: object with numeric keys {"1": {...}, "2": {...}}
+            List<TrackingInfo.TrackingEvent> events = new ArrayList<>();
+            JsonNode history = tracking.path("HISTORY");
+            history.fields().forEachRemaining(entry -> {
+                JsonNode node = entry.getValue();
+                events.add(TrackingInfo.TrackingEvent.builder()
+                        .status(node.path("STATUT").asText())
+                        .description(node.path("COMMENT").asText(null))
+                        .location(null)
+                        .eventAt(parseOzonDate(node))
+                        .build());
+            });
+
+            // Sort events by date ascending
+            events.sort(java.util.Comparator.comparing(TrackingInfo.TrackingEvent::getEventAt));
+
+            // Current status from LAST_TRACKING
+            JsonNode lastTracking = tracking.path("LAST_TRACKING");
+            String currentStatut = lastTracking.path("STATUT").asText("UNKNOWN");
 
             return TrackingInfo.builder()
                     .trackingNumber(trackingNumber)
-                    .status(json.path("STATUS").asText("UNKNOWN"))
-                    .statusDescription(json.path("STATUS_LABEL").asText(null))
-                    .currentLocation(json.path("CITY_NAME").asText(null))
+                    .status(currentStatut)
+                    .statusDescription(currentStatut)
+                    .currentLocation(null)
                     .events(events)
                     .build();
 
@@ -243,6 +250,27 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private LocalDateTime parseOzonDate(JsonNode node) {
+        // Try TIME_STR first: "2026-03-25 00:44"
+        String timeStr = node.path("TIME_STR").asText(null);
+        if (timeStr != null && !timeStr.isBlank()) {
+            try {
+                return LocalDateTime.parse(timeStr,
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+            } catch (Exception ignored) {}
+        }
+        // Fallback: TIME unix timestamp
+        String unixStr = node.path("TIME").asText(null);
+        if (unixStr != null && !unixStr.isBlank()) {
+            try {
+                return java.time.Instant.ofEpochSecond(Long.parseLong(unixStr))
+                        .atZone(java.time.ZoneId.of("Africa/Casablanca"))
+                        .toLocalDateTime();
+            } catch (Exception ignored) {}
+        }
+        return LocalDateTime.now();
+    }
 
     private String buildNature(ShipmentRequest request) {
         return request.getItems().stream()

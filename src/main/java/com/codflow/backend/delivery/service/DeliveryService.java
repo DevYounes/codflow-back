@@ -259,15 +259,16 @@ public class DeliveryService {
     private ShipmentStatus mapProviderStatus(String providerStatus) {
         if (providerStatus == null) return null;
         return switch (providerStatus.toLowerCase()) {
-            case "created", "registered" -> ShipmentStatus.CREATED;
-            case "pickup_requested", "pickup_scheduled" -> ShipmentStatus.PICKUP_REQUESTED;
-            case "picked_up", "collected" -> ShipmentStatus.PICKED_UP;
-            case "in_transit", "on_the_way" -> ShipmentStatus.IN_TRANSIT;
-            case "out_for_delivery", "with_courier" -> ShipmentStatus.OUT_FOR_DELIVERY;
-            case "delivered", "completed" -> ShipmentStatus.DELIVERED;
-            case "failed", "failed_delivery", "undelivered" -> ShipmentStatus.FAILED_DELIVERY;
-            case "returned", "return_in_progress", "return_completed" -> ShipmentStatus.RETURNED;
-            case "cancelled" -> ShipmentStatus.CANCELLED;
+            // Ozon Express French labels
+            case "nouveau colis" -> ShipmentStatus.CREATED;
+            case "en attente de ramassage", "attente de ramassage" -> ShipmentStatus.PICKUP_REQUESTED;
+            case "ramassé", "ramasse", "enlevé", "enleve", "collecté", "collecte" -> ShipmentStatus.PICKED_UP;
+            case "en transit", "en cours de traitement", "en traitement" -> ShipmentStatus.IN_TRANSIT;
+            case "en cours de livraison", "sorti en livraison" -> ShipmentStatus.OUT_FOR_DELIVERY;
+            case "livré", "livre" -> ShipmentStatus.DELIVERED;
+            case "tentative échouée", "tentative echouee", "echec de livraison", "échec de livraison" -> ShipmentStatus.FAILED_DELIVERY;
+            case "retour", "en retour", "retourné", "retourne", "retour en cours" -> ShipmentStatus.RETURNED;
+            case "annulé", "annule" -> ShipmentStatus.CANCELLED;
             default -> null;
         };
     }
