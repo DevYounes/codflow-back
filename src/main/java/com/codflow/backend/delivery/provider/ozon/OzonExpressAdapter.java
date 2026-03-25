@@ -186,14 +186,22 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
 
             JsonNode history = json.path("HISTORY");
             if (history.isArray()) {
-                history.forEach(node -> events.add(
-                        TrackingInfo.TrackingEvent.builder()
-                                .status(node.path("STATUS").asText())
-                                .description(node.path("COMMENT").asText(null))
-                                .location(node.path("CITY").asText(null))
-                                .eventAt(LocalDateTime.now())
-                                .build()
-                ));
+                history.forEach(node -> {
+                    LocalDateTime eventAt = LocalDateTime.now();
+                    String dateStr = node.path("DATE").asText(null);
+                    if (dateStr != null && !dateStr.isBlank()) {
+                        try {
+                            eventAt = LocalDateTime.parse(dateStr,
+                                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                        } catch (Exception ignored) {}
+                    }
+                    events.add(TrackingInfo.TrackingEvent.builder()
+                            .status(node.path("STATUS_LABEL").asText(node.path("STATUS").asText()))
+                            .description(node.path("COMMENT").asText(null))
+                            .location(node.path("CITY").asText(null))
+                            .eventAt(eventAt)
+                            .build());
+                });
             }
 
             return TrackingInfo.builder()

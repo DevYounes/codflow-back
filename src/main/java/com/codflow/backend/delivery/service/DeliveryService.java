@@ -200,16 +200,21 @@ public class DeliveryService {
             updateShipmentStatus(shipment, newStatus);
         }
 
-        // Record new tracking events
+        // Record new tracking events (skip duplicates)
         if (info.getEvents() != null) {
             info.getEvents().forEach(event -> {
-                DeliveryTrackingHistory history = new DeliveryTrackingHistory();
-                history.setShipment(shipment);
-                history.setStatus(event.getStatus());
-                history.setDescription(event.getDescription());
-                history.setLocation(event.getLocation());
-                history.setEventAt(event.getEventAt() != null ? event.getEventAt() : LocalDateTime.now());
-                shipment.getTrackingHistory().add(history);
+                LocalDateTime eventAt = event.getEventAt() != null ? event.getEventAt() : LocalDateTime.now();
+                boolean alreadyExists = shipment.getTrackingHistory().stream().anyMatch(h ->
+                        h.getStatus().equals(event.getStatus()) && h.getEventAt().equals(eventAt));
+                if (!alreadyExists) {
+                    DeliveryTrackingHistory history = new DeliveryTrackingHistory();
+                    history.setShipment(shipment);
+                    history.setStatus(event.getStatus());
+                    history.setDescription(event.getDescription());
+                    history.setLocation(event.getLocation());
+                    history.setEventAt(eventAt);
+                    shipment.getTrackingHistory().add(history);
+                }
             });
         }
     }
