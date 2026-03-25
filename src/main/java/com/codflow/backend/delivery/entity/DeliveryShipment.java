@@ -39,6 +39,9 @@ public class DeliveryShipment extends BaseEntity {
     @Column(nullable = false, length = 50)
     private ShipmentStatus status = ShipmentStatus.PENDING;
 
+    @Column(name = "provider_status_label", length = 100)
+    private String providerStatusLabel;
+
     @Column(name = "pickup_requested", nullable = false)
     private boolean pickupRequested = false;
 

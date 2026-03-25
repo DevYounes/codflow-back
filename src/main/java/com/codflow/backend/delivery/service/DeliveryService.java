@@ -194,6 +194,11 @@ public class DeliveryService {
         TrackingInfo info = adapter.trackShipment(shipment.getTrackingNumber(), adapterConfig);
         if (info == null || "UNKNOWN".equals(info.getStatus())) return;
 
+        // Store provider's human-readable status label
+        if (info.getStatusDescription() != null) {
+            shipment.setProviderStatusLabel(info.getStatusDescription());
+        }
+
         // Map provider status to our enum
         ShipmentStatus newStatus = mapProviderStatus(info.getStatus());
         if (newStatus != null && newStatus != shipment.getStatus()) {
@@ -316,7 +321,9 @@ public class DeliveryService {
                 .trackingNumber(shipment.getTrackingNumber())
                 .providerOrderId(shipment.getProviderOrderId())
                 .status(shipment.getStatus())
-                .statusLabel(shipment.getStatus().getLabel())
+                .statusLabel(shipment.getProviderStatusLabel() != null
+                        ? shipment.getProviderStatusLabel()
+                        : shipment.getStatus().getLabel())
                 .pickupRequested(shipment.isPickupRequested())
                 .pickupRequestedAt(shipment.getPickupRequestedAt())
                 .shippedAt(shipment.getShippedAt())
