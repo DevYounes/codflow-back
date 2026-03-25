@@ -170,8 +170,13 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
 
             WebClient client = webClientBuilder.baseUrl(baseUrl).build();
 
-            String responseBody = client.get()
-                    .uri("/customers/{id}/{key}/get-parcel/{tracking}", customerId, apiKey, trackingNumber)
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("tracking-number", trackingNumber);
+
+            String responseBody = client.post()
+                    .uri("/customers/{id}/{key}/tracking", customerId, apiKey)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(BodyInserters.fromFormData(form))
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
