@@ -53,6 +53,7 @@ public class AnalyticsService {
 
         long confirmedOrders = orderRepository.countByStatuses(CONFIRMED_PIPELINE_STATUSES);
         long cancelledOrders = countCancelled();
+        long doublonOrders   = orderRepository.countByStatus(OrderStatus.DOUBLON);
         long pendingOrders = countPending();
         long deliveredOrders = orderRepository.countByStatus(OrderStatus.LIVRE);
         long inDeliveryOrders = orderRepository.countByStatus(OrderStatus.EN_LIVRAISON) +
@@ -89,6 +90,7 @@ public class AnalyticsService {
                 .monthOrders(monthOrders)
                 .confirmedOrders(confirmedOrders)
                 .cancelledOrders(cancelledOrders)
+                .doublonOrders(doublonOrders)
                 .pendingOrders(pendingOrders)
                 .confirmationRate(confirmationRate)
                 .cancellationRate(cancellationRate)
@@ -127,7 +129,8 @@ public class AnalyticsService {
             long total = agentStats[0];
             long confirmed = agentStats[1];
             long cancelled = countCancelledForAgent(agent.getId());
-            long pending = Math.max(0, total - confirmed - cancelled);
+            long doublon  = orderRepository.countByAgentAndStatus(agent.getId(), OrderStatus.DOUBLON);
+            long pending = Math.max(0, total - confirmed - cancelled - doublon);
             double confirmRate = total > 0 ? round((double) confirmed / total * 100) : 0;
             double cancelRate = total > 0 ? round((double) cancelled / total * 100) : 0;
 
@@ -138,6 +141,7 @@ public class AnalyticsService {
                     .totalAssigned(total)
                     .confirmed(confirmed)
                     .cancelled(cancelled)
+                    .doublon(doublon)
                     .pending(Math.max(0, pending))
                     .confirmationRate(confirmRate)
                     .cancellationRate(cancelRate)
@@ -202,8 +206,7 @@ public class AnalyticsService {
     }
 
     private static final List<OrderStatus> CANCELLED_STATUSES = List.of(
-            OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX,
-            OrderStatus.FAKE_ORDER, OrderStatus.DOUBLON);
+            OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX, OrderStatus.FAKE_ORDER);
 
     // All statuses that represent an order confirmed by an agent (including delivery pipeline)
     private static final List<OrderStatus> CONFIRMED_PIPELINE_STATUSES = List.of(
@@ -229,8 +232,9 @@ public class AnalyticsService {
         // "confirmed" = all orders that passed through confirmation (including delivery pipeline)
         long confirmed = orderRepository.countByAgentAndStatuses(agentId, CONFIRMED_PIPELINE_STATUSES);
         long cancelled = orderRepository.countByAgentAndStatuses(agentId, CANCELLED_STATUSES);
+        long doublon   = orderRepository.countByAgentAndStatus(agentId, OrderStatus.DOUBLON);
         long delivered = orderRepository.countByAgentAndStatus(agentId, OrderStatus.LIVRE);
-        long pending   = Math.max(0, total - confirmed - cancelled);
+        long pending   = Math.max(0, total - confirmed - cancelled - doublon);
         long duplicates = orderRepository.countPotentialDuplicatesByAgent(agentId);
 
         double confirmRate = total > 0 ? round((double) confirmed / total * 100) : 0;
@@ -262,6 +266,7 @@ public class AnalyticsService {
                 .confirmedOrders(confirmed)
                 .deliveredOrders(delivered)
                 .cancelledOrders(cancelled)
+                .doublonOrders(doublon)
                 .pendingOrders(pending)
                 .potentialDuplicates(duplicates)
                 .confirmationRate(confirmRate)
@@ -274,8 +279,7 @@ public class AnalyticsService {
     private long countCancelled() {
         return orderRepository.countByStatus(OrderStatus.ANNULE) +
                orderRepository.countByStatus(OrderStatus.PAS_SERIEUX) +
-               orderRepository.countByStatus(OrderStatus.FAKE_ORDER) +
-               orderRepository.countByStatus(OrderStatus.DOUBLON);
+               orderRepository.countByStatus(OrderStatus.FAKE_ORDER);
     }
 
     private long countPending() {

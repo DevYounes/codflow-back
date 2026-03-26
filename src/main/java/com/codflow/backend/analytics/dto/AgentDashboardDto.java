@@ -26,8 +26,9 @@ public class AgentDashboardDto {
     // Résultats
     private long confirmedOrders;   // CONFIRME + toute la pipeline livraison
     private long deliveredOrders;   // LIVRE (basé sur retour société de livraison)
-    private long cancelledOrders;   // ANNULE + PAS_SERIEUX + FAKE_ORDER + DOUBLON
-    private long pendingOrders;     // tout ce qui n'est ni confirmé ni annulé
+    private long cancelledOrders;   // ANNULE + PAS_SERIEUX + FAKE_ORDER
+    private long doublonOrders;     // DOUBLON (traitement séparé, pas une annulation)
+    private long pendingOrders;     // tout ce qui n'est ni confirmé, ni annulé, ni doublon
     private long potentialDuplicates;
 
     // Taux (%)

@@ -12,6 +12,7 @@ public class AgentPerformanceDto {
     private long totalAssigned;
     private long confirmed;
     private long cancelled;
+    private long doublon;
     private long pending;
     private double confirmationRate;
     private double cancellationRate;

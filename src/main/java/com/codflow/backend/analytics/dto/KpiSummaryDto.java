@@ -20,6 +20,7 @@ public class KpiSummaryDto {
     // Confirmation
     private long confirmedOrders;
     private long cancelledOrders;
+    private long doublonOrders;
     private long pendingOrders;
     private double confirmationRate;   // %
     private double cancellationRate;   // %
