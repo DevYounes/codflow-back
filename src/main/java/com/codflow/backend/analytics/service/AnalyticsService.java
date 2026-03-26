@@ -51,7 +51,7 @@ public class AnalyticsService {
         long weekOrders = orderRepository.countByDateRange(weekStart, now);
         long monthOrders = orderRepository.countByDateRange(monthStart, now);
 
-        long confirmedOrders = orderRepository.countByStatus(OrderStatus.CONFIRME);
+        long confirmedOrders = orderRepository.countByStatuses(CONFIRMED_PIPELINE_STATUSES);
         long cancelledOrders = countCancelled();
         long pendingOrders = countPending();
         long deliveredOrders = orderRepository.countByStatus(OrderStatus.LIVRE);
@@ -117,8 +117,8 @@ public class AnalyticsService {
         Map<Long, long[]> statsMap = new HashMap<>();
         stats.forEach(row -> {
             Long agentId = (Long) row[0];
-            long total = (Long) row[1];
-            long confirmed = (Long) row[2];
+            long total = ((Number) row[1]).longValue();
+            long confirmed = ((Number) row[2]).longValue();
             statsMap.put(agentId, new long[]{total, confirmed});
         });
 
@@ -127,7 +127,7 @@ public class AnalyticsService {
             long total = agentStats[0];
             long confirmed = agentStats[1];
             long cancelled = countCancelledForAgent(agent.getId());
-            long pending = total - confirmed - cancelled;
+            long pending = Math.max(0, total - confirmed - cancelled);
             double confirmRate = total > 0 ? round((double) confirmed / total * 100) : 0;
             double cancelRate = total > 0 ? round((double) cancelled / total * 100) : 0;
 
@@ -205,6 +205,12 @@ public class AnalyticsService {
             OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX,
             OrderStatus.FAKE_ORDER, OrderStatus.DOUBLON);
 
+    // All statuses that represent an order confirmed by an agent (including delivery pipeline)
+    private static final List<OrderStatus> CONFIRMED_PIPELINE_STATUSES = List.of(
+            OrderStatus.CONFIRME, OrderStatus.EN_PREPARATION, OrderStatus.ENVOYE,
+            OrderStatus.EN_LIVRAISON, OrderStatus.LIVRE,
+            OrderStatus.ECHEC_LIVRAISON, OrderStatus.RETOURNE);
+
     @Transactional(readOnly = true)
     public AgentDashboardDto getAgentDashboard(UserPrincipal principal) {
         User agent = userRepository.findById(principal.getId())
@@ -220,13 +226,17 @@ public class AnalyticsService {
         long today     = orderRepository.countByAgentAndDateRange(agentId, todayStart, now);
         long week      = orderRepository.countByAgentAndDateRange(agentId, weekStart, now);
         long month     = orderRepository.countByAgentAndDateRange(agentId, monthStart, now);
-        long confirmed = orderRepository.countByAgentAndStatus(agentId, OrderStatus.CONFIRME);
+        // "confirmed" = all orders that passed through confirmation (including delivery pipeline)
+        long confirmed = orderRepository.countByAgentAndStatuses(agentId, CONFIRMED_PIPELINE_STATUSES);
         long cancelled = orderRepository.countByAgentAndStatuses(agentId, CANCELLED_STATUSES);
+        long delivered = orderRepository.countByAgentAndStatus(agentId, OrderStatus.LIVRE);
         long pending   = Math.max(0, total - confirmed - cancelled);
         long duplicates = orderRepository.countPotentialDuplicatesByAgent(agentId);
 
         double confirmRate = total > 0 ? round((double) confirmed / total * 100) : 0;
         double cancelRate  = total > 0 ? round((double) cancelled / total * 100) : 0;
+
+        BigDecimal revenue = orderRepository.sumRevenueByAgentAndStatus(agentId, OrderStatus.LIVRE);
 
         // Daily trend (last 7 days, agent's orders only)
         List<Object[]> raw = orderRepository.getDailyStatsForAgent(agentId, weekStart, now);
@@ -250,11 +260,13 @@ public class AnalyticsService {
                 .weekOrders(week)
                 .monthOrders(month)
                 .confirmedOrders(confirmed)
+                .deliveredOrders(delivered)
                 .cancelledOrders(cancelled)
                 .pendingOrders(pending)
                 .potentialDuplicates(duplicates)
                 .confirmationRate(confirmRate)
                 .cancellationRate(cancelRate)
+                .revenue(revenue)
                 .dailyTrend(trend)
                 .build();
     }

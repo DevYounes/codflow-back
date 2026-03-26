@@ -44,11 +44,13 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")
     List<Object[]> countGroupByStatus();
 
-    @Query("SELECT o.assignedTo.id, COUNT(o), SUM(CASE WHEN o.status = 'CONFIRME' THEN 1 ELSE 0 END) " +
+    @Query("SELECT o.assignedTo.id, COUNT(o), " +
+           "SUM(CASE WHEN o.status IN ('CONFIRME','EN_PREPARATION','ENVOYE','EN_LIVRAISON','LIVRE','ECHEC_LIVRAISON','RETOURNE') THEN 1 ELSE 0 END) " +
            "FROM Order o WHERE o.assignedTo IS NOT NULL GROUP BY o.assignedTo.id")
     List<Object[]> getAgentPerformanceStats();
 
-    @Query("SELECT DATE(o.createdAt), COUNT(o), SUM(CASE WHEN o.status = 'CONFIRME' THEN 1 ELSE 0 END) " +
+    @Query("SELECT DATE(o.createdAt), COUNT(o), " +
+           "SUM(CASE WHEN o.status IN ('CONFIRME','EN_PREPARATION','ENVOYE','EN_LIVRAISON','LIVRE','ECHEC_LIVRAISON','RETOURNE') THEN 1 ELSE 0 END) " +
            "FROM Order o WHERE o.createdAt BETWEEN :from AND :to GROUP BY DATE(o.createdAt) ORDER BY DATE(o.createdAt)")
     List<Object[]> getDailyStats(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
@@ -74,12 +76,18 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     long countPotentialDuplicatesByAgent(@Param("agentId") Long agentId);
 
     @Query("SELECT DATE(o.createdAt), COUNT(o), " +
-           "SUM(CASE WHEN o.status = 'CONFIRME' THEN 1 ELSE 0 END) " +
+           "SUM(CASE WHEN o.status IN ('CONFIRME','EN_PREPARATION','ENVOYE','EN_LIVRAISON','LIVRE','ECHEC_LIVRAISON','RETOURNE') THEN 1 ELSE 0 END) " +
            "FROM Order o WHERE o.assignedTo.id = :agentId AND o.createdAt BETWEEN :from AND :to " +
            "GROUP BY DATE(o.createdAt) ORDER BY DATE(o.createdAt)")
     List<Object[]> getDailyStatsForAgent(@Param("agentId") Long agentId,
                                          @Param("from") LocalDateTime from,
                                          @Param("to") LocalDateTime to);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.status IN :statuses")
+    long countByStatuses(@Param("statuses") Collection<OrderStatus> statuses);
+
+    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.assignedTo.id = :agentId AND o.status = :status")
+    BigDecimal sumRevenueByAgentAndStatus(@Param("agentId") Long agentId, @Param("status") OrderStatus status);
 
     // ---- Revenue ----
 
