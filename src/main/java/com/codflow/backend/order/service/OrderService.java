@@ -32,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -194,7 +196,7 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<OrderDto> getOrders(OrderStatus status, java.util.Collection<OrderStatus> statuses,
+    public PageResponse<OrderDto> getOrders(OrderStatus status, Collection<String> rawStatuses,
                                             OrderSource source,
                                             Long assignedTo, String search,
                                             LocalDateTime from, LocalDateTime to,
@@ -204,9 +206,31 @@ public class OrderService {
         if (principal != null && Role.AGENT.name().equals(principal.getRole())) {
             filterAssignedTo = principal.getId();
         }
+        Collection<OrderStatus> statuses = expandStatusAliases(rawStatuses);
         Page<Order> page = orderRepository.findAll(
                 OrderSpecification.withFilters(status, statuses, source, filterAssignedTo, search, from, to), pageable);
         return PageResponse.of(page.map(o -> toDto(o, false)));
+    }
+
+    /**
+     * Expands frontend-friendly status aliases to actual OrderStatus values.
+     * CANCELLED maps to the full cancelled group (ANNULE, PAS_SERIEUX, FAKE_ORDER).
+     * RETURNED maps to RETOURNE.
+     */
+    private Collection<OrderStatus> expandStatusAliases(Collection<String> rawStatuses) {
+        if (rawStatuses == null || rawStatuses.isEmpty()) return null;
+        List<OrderStatus> result = new ArrayList<>();
+        for (String s : rawStatuses) {
+            switch (s.toUpperCase()) {
+                case "CANCELLED" -> { result.add(OrderStatus.ANNULE); result.add(OrderStatus.PAS_SERIEUX); result.add(OrderStatus.FAKE_ORDER); }
+                case "RETURNED"  -> result.add(OrderStatus.RETOURNE);
+                default -> {
+                    try { result.add(OrderStatus.valueOf(s.toUpperCase())); }
+                    catch (IllegalArgumentException ignored) {}
+                }
+            }
+        }
+        return result.isEmpty() ? null : result;
     }
 
     @Transactional(readOnly = true)

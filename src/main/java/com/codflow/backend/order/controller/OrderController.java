@@ -46,7 +46,7 @@ public class OrderController {
     @Operation(summary = "Lister les commandes avec filtres")
     public ResponseEntity<ApiResponse<PageResponse<OrderDto>>> getOrders(
             @RequestParam(required = false) OrderStatus status,
-            @RequestParam(required = false) List<OrderStatus> statuses,
+            @RequestParam(required = false) List<String> statuses,
             @RequestParam(required = false) OrderSource source,
             @RequestParam(required = false) Long assignedTo,
             @RequestParam(required = false) String search,
