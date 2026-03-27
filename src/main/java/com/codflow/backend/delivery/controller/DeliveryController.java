@@ -1,7 +1,6 @@
 package com.codflow.backend.delivery.controller;
 
 import com.codflow.backend.common.dto.ApiResponse;
-import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
@@ -16,11 +15,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -34,17 +36,20 @@ public class DeliveryController {
     private final DeliveryProviderRegistry providerRegistry;
 
     @GetMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Lister les envois avec filtres optionnels")
-    public ResponseEntity<ApiResponse<PageResponse<DeliveryShipmentDto>>> getShipments(
-            @RequestParam(required = false) ShipmentStatus status,
+    public ResponseEntity<ApiResponse<org.springframework.data.domain.Page<DeliveryShipmentDto>>> listShipments(
+            @RequestParam(required = false) List<ShipmentStatus> status,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
         Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
-        PageRequest pageable = PageRequest.of(page, size, sort);
-        return ResponseEntity.ok(ApiResponse.success(deliveryService.getAllShipments(status, pageable)));
+        Pageable pageable = PageRequest.of(page, size, sort);
+        return ResponseEntity.ok(ApiResponse.success(deliveryService.listShipments(status, search, from, to, pageable)));
     }
 
     @GetMapping("/shipments/{id}")

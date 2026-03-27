@@ -2,7 +2,6 @@ package com.codflow.backend.delivery.service;
 
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
-import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
@@ -27,7 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -151,11 +152,31 @@ public class DeliveryService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<DeliveryShipmentDto> getAllShipments(ShipmentStatus status, Pageable pageable) {
-        var page = (status != null)
-                ? shipmentRepository.findByStatus(status, pageable)
-                : shipmentRepository.findAll(pageable);
-        return PageResponse.of(page.map(s -> toDto(s, false)));
+    public org.springframework.data.domain.Page<DeliveryShipmentDto> listShipments(
+            List<ShipmentStatus> statuses, String search, LocalDate from, LocalDate to, Pageable pageable) {
+        Specification<DeliveryShipment> spec = Specification.where(null);
+
+        if (statuses != null && !statuses.isEmpty()) {
+            spec = spec.and((root, query, cb) -> root.get("status").in(statuses));
+        }
+        if (search != null && !search.isBlank()) {
+            String like = "%" + search.toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("trackingNumber")), like),
+                    cb.like(cb.lower(root.join("order").get("customerName")), like),
+                    cb.like(cb.lower(root.join("order").get("orderNumber")), like)
+            ));
+        }
+        if (from != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("createdAt"), from.atStartOfDay()));
+        }
+        if (to != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.lessThan(root.get("createdAt"), to.plusDays(1).atStartOfDay()));
+        }
+
+        return shipmentRepository.findAll(spec, pageable).map(s -> toDto(s, false));
     }
 
     @Transactional(readOnly = true)
