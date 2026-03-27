@@ -36,7 +36,7 @@ public class DeliveryController {
     private final DeliveryProviderRegistry providerRegistry;
 
     @GetMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Lister les envois avec filtres optionnels")
     public ResponseEntity<ApiResponse<org.springframework.data.domain.Page<DeliveryShipmentDto>>> listShipments(
             @RequestParam(required = false) List<ShipmentStatus> status,
