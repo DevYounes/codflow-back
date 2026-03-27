@@ -1,11 +1,13 @@
 package com.codflow.backend.delivery.controller;
 
 import com.codflow.backend.common.dto.ApiResponse;
+import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
 import com.codflow.backend.delivery.dto.UpdateProviderConfigRequest;
 import com.codflow.backend.delivery.entity.DeliveryProviderConfig;
+import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.provider.DeliveryProviderRegistry;
 import com.codflow.backend.delivery.repository.DeliveryProviderRepository;
 import com.codflow.backend.delivery.service.DeliveryService;
@@ -13,6 +15,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +32,27 @@ public class DeliveryController {
     private final DeliveryService deliveryService;
     private final DeliveryProviderRepository providerRepository;
     private final DeliveryProviderRegistry providerRegistry;
+
+    @GetMapping("/shipments")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @Operation(summary = "Lister les envois avec filtres optionnels")
+    public ResponseEntity<ApiResponse<PageResponse<DeliveryShipmentDto>>> getShipments(
+            @RequestParam(required = false) ShipmentStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        PageRequest pageable = PageRequest.of(page, size, sort);
+        return ResponseEntity.ok(ApiResponse.success(deliveryService.getAllShipments(status, pageable)));
+    }
+
+    @GetMapping("/shipments/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @Operation(summary = "Obtenir un envoi par ID")
+    public ResponseEntity<ApiResponse<DeliveryShipmentDto>> getShipment(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(deliveryService.getShipmentById(id)));
+    }
 
     @PostMapping("/shipments")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")

@@ -2,6 +2,7 @@ package com.codflow.backend.delivery.service;
 
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
+import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
@@ -24,6 +25,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -145,6 +148,21 @@ public class DeliveryService {
         }
 
         return shipments.isEmpty() ? null : toDto(shipments.get(0), false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<DeliveryShipmentDto> getAllShipments(ShipmentStatus status, Pageable pageable) {
+        var page = (status != null)
+                ? shipmentRepository.findByStatus(status, pageable)
+                : shipmentRepository.findAll(pageable);
+        return PageResponse.of(page.map(s -> toDto(s, false)));
+    }
+
+    @Transactional(readOnly = true)
+    public DeliveryShipmentDto getShipmentById(Long id) {
+        DeliveryShipment shipment = shipmentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Envoi", id));
+        return toDto(shipment, true);
     }
 
     @Transactional(readOnly = true)

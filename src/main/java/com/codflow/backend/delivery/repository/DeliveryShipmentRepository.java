@@ -20,6 +20,8 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
 
     List<DeliveryShipment> findByStatus(ShipmentStatus status);
 
+    Page<DeliveryShipment> findByStatus(ShipmentStatus status, Pageable pageable);
+
     @Query("SELECT s FROM DeliveryShipment s WHERE s.status NOT IN " +
            "('DELIVERED', 'RETURNED', 'CANCELLED') AND s.trackingNumber IS NOT NULL")
     List<DeliveryShipment> findActiveShipments();
