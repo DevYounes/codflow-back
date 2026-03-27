@@ -158,6 +158,55 @@ public class OrderService {
     }
 
     @Transactional
+    public OrderDto updateOrder(Long orderId, UpdateOrderRequest request, UserPrincipal principal) {
+        Order order = getOrderById(orderId);
+
+        order.setCustomerName(request.getCustomerName());
+        String normalizedPhone = PhoneNormalizer.normalize(request.getCustomerPhone());
+        order.setCustomerPhone(request.getCustomerPhone());
+        order.setCustomerPhoneNormalized(normalizedPhone);
+        order.setCustomerPhone2(request.getCustomerPhone2());
+        order.setAddress(request.getAddress());
+        order.setVille(request.getVille());
+        order.setCity(request.getCity() != null && !request.getCity().isBlank()
+                ? request.getCity() : request.getVille());
+        order.setZipCode(request.getZipCode());
+        order.setNotes(request.getNotes());
+        if (request.getShippingCost() != null) {
+            order.setShippingCost(request.getShippingCost());
+        }
+        order.setShopifyOrderId(request.getShopifyOrderId());
+        order.setExternalRef(request.getExternalRef());
+
+        if (request.getItems() != null && !request.getItems().isEmpty()) {
+            order.getItems().clear();
+            for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
+                OrderItem item = new OrderItem();
+                item.setProductName(itemReq.getProductName());
+                item.setProductSku(itemReq.getProductSku());
+                item.setQuantity(itemReq.getQuantity());
+                item.setUnitPrice(itemReq.getUnitPrice());
+                if (itemReq.getProductId() != null) {
+                    productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
+                }
+                if (itemReq.getVariantId() != null) {
+                    productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
+                        item.setVariant(v);
+                        if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
+                            item.setUnitPrice(v.getPriceOverride());
+                        }
+                    });
+                }
+                item.calculateTotalPrice();
+                order.addItem(item);
+            }
+            order.recalculateTotals();
+        }
+
+        return toDto(orderRepository.save(order), true);
+    }
+
+    @Transactional
     public OrderDto assignOrder(Long orderId, AssignOrderRequest request, UserPrincipal principal) {
         Order order = getOrderById(orderId);
         User agent = userRepository.findById(request.getAgentId())

@@ -80,6 +80,15 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(orderService.getOrder(id, principal)));
     }
 
+    @PutMapping("/{id}")
+    @Operation(summary = "Modifier les informations d'une commande")
+    public ResponseEntity<ApiResponse<OrderDto>> updateOrder(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateOrderRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success("Commande mise à jour", orderService.updateOrder(id, request, principal)));
+    }
+
     @PatchMapping("/{id}/status")
     @Operation(summary = "Mettre à jour le statut d'une commande")
     public ResponseEntity<ApiResponse<OrderDto>> updateStatus(
