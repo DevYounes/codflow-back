@@ -14,8 +14,6 @@ public class UserSpecification {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            predicates.add(cb.isTrue(root.get("active")));
-
             if (role != null) {
                 predicates.add(cb.equal(root.get("role"), role));
             }

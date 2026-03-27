@@ -116,6 +116,13 @@ public class UserService {
         userRepository.save(user);
     }
 
+    @Transactional
+    public void activateUser(Long id) {
+        User user = getUserById(id);
+        user.setActive(true);
+        userRepository.save(user);
+    }
+
     private User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur", id));

@@ -77,4 +77,12 @@ public class UserController {
         userService.deactivateUser(id);
         return ResponseEntity.ok(ApiResponse.success("Utilisateur désactivé"));
     }
+
+    @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Réactiver un utilisateur désactivé")
+    public ResponseEntity<ApiResponse<Void>> activateUser(@PathVariable Long id) {
+        userService.activateUser(id);
+        return ResponseEntity.ok(ApiResponse.success("Utilisateur réactivé"));
+    }
 }
