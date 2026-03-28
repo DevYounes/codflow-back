@@ -19,6 +19,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import org.springframework.http.MediaType;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 
 import java.math.BigDecimal;
 import java.net.URLEncoder;
@@ -258,15 +259,34 @@ public class ShopifyImportService {
 
     private JsonNode fetchOrders(String url, String token) {
         try {
-            String body = webClientBuilder.build()
+            // 10 MB buffer — Shopify responses can be large (200+ orders with all fields)
+            ExchangeStrategies strategies = ExchangeStrategies.builder()
+                    .codecs(cfg -> cfg.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                    .build();
+
+            String body = webClientBuilder
+                    .exchangeStrategies(strategies)
+                    .build()
                     .get()
                     .uri(url)
                     .header("X-Shopify-Access-Token", token)
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
-            if (body == null || body.isBlank()) return null;
+
+            if (body == null || body.isBlank()) {
+                log.warn("Shopify returned empty body for: {}", url);
+                return null;
+            }
+
             JsonNode root = objectMapper.readTree(body);
+
+            // Shopify sometimes returns 200 with an error in the body
+            if (root.has("errors")) {
+                log.error("Shopify API error in body: {}", root.path("errors").asText());
+                return null;
+            }
+
             return root.path("orders");
         } catch (WebClientResponseException e) {
             if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
@@ -274,10 +294,10 @@ public class ShopifyImportService {
                         "Accès refusé à Shopify (HTTP " + e.getStatusCode().value()
                         + "). Vérifiez le token d'accès.");
             }
-            log.error("Shopify API error: {} — {}", e.getStatusCode(), e.getMessage());
+            log.error("Shopify API HTTP error: {} — body: {}", e.getStatusCode(), e.getResponseBodyAsString());
             return null;
         } catch (Exception e) {
-            log.error("Failed to fetch Shopify orders: {}", e.getMessage());
+            log.error("Failed to fetch Shopify orders: {} — {}", e.getClass().getSimpleName(), e.getMessage());
             return null;
         }
     }
