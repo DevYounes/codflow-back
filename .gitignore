@@ -29,6 +29,7 @@ logs/
 # Environment & secrets
 .env
 .env.*
+!.env.example
 application-local.properties
 application-local.yml
 application-secrets.properties
