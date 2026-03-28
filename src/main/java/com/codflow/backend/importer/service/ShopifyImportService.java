@@ -8,7 +8,6 @@ import com.codflow.backend.order.enums.OrderSource;
 import com.codflow.backend.order.repository.OrderRepository;
 import com.codflow.backend.order.service.OrderService;
 import com.codflow.backend.product.repository.ProductRepository;
-import com.codflow.backend.product.repository.ProductVariantRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +44,6 @@ public class ShopifyImportService {
     private final OrderService         orderService;
     private final OrderRepository      orderRepository;
     private final ProductRepository    productRepository;
-    private final ProductVariantRepository productVariantRepository;
     private final WebClient.Builder    webClientBuilder;
     private final ObjectMapper         objectMapper;
 
