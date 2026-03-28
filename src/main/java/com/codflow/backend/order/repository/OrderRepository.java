@@ -86,6 +86,28 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     @Query("SELECT COUNT(o) FROM Order o WHERE o.status IN :statuses")
     long countByStatuses(@Param("statuses") Collection<OrderStatus> statuses);
 
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.status IN :statuses AND o.createdAt BETWEEN :from AND :to")
+    long countByStatusesAndDateRange(@Param("statuses") Collection<OrderStatus> statuses,
+                                     @Param("from") LocalDateTime from,
+                                     @Param("to") LocalDateTime to);
+
+    @Query("SELECT o.status, COUNT(o) FROM Order o WHERE o.createdAt BETWEEN :from AND :to GROUP BY o.status")
+    List<Object[]> countGroupByStatusAndDateRange(@Param("from") LocalDateTime from,
+                                                  @Param("to") LocalDateTime to);
+
+    @Query("SELECT o.source, COUNT(o) FROM Order o WHERE o.source IS NOT NULL AND o.createdAt BETWEEN :from AND :to GROUP BY o.source")
+    List<Object[]> countGroupBySourceAndDateRange(@Param("from") LocalDateTime from,
+                                                  @Param("to") LocalDateTime to);
+
+    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.status = :status AND o.createdAt BETWEEN :from AND :to")
+    BigDecimal sumRevenueByStatusAndDateRange(@Param("status") OrderStatus status,
+                                              @Param("from") LocalDateTime from,
+                                              @Param("to") LocalDateTime to);
+
+    @Query("SELECT COALESCE(AVG(o.totalAmount), 0) FROM Order o WHERE o.totalAmount IS NOT NULL AND o.createdAt BETWEEN :from AND :to")
+    BigDecimal avgOrderValueByDateRange(@Param("from") LocalDateTime from,
+                                        @Param("to") LocalDateTime to);
+
     @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.assignedTo.id = :agentId AND o.status = :status")
     BigDecimal sumRevenueByAgentAndStatus(@Param("agentId") Long agentId, @Param("status") OrderStatus status);
 

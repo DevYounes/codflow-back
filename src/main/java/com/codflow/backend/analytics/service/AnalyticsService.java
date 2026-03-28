@@ -40,26 +40,44 @@ public class AnalyticsService {
 
     @Transactional(readOnly = true)
     public KpiSummaryDto getSummary(LocalDateTime from, LocalDateTime to) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now        = LocalDateTime.now();
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
-        LocalDateTime weekStart = LocalDate.now().minusDays(7).atStartOfDay();
+        LocalDateTime weekStart  = LocalDate.now().minusDays(7).atStartOfDay();
         LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
 
-        // Counts
-        long totalOrders = orderRepository.count();
-        long todayOrders = orderRepository.countByDateRange(todayStart, now);
-        long weekOrders = orderRepository.countByDateRange(weekStart, now);
-        long monthOrders = orderRepository.countByDateRange(monthStart, now);
+        boolean filtered = from != null && to != null;
 
-        long confirmedOrders = orderRepository.countByStatuses(CONFIRMED_PIPELINE_STATUSES);
-        long cancelledOrders = countCancelled();
-        long doublonOrders   = orderRepository.countByStatus(OrderStatus.DOUBLON);
-        long pendingOrders = countPending();
-        long deliveredOrders = orderRepository.countByStatus(OrderStatus.LIVRE);
-        long inDeliveryOrders = orderRepository.countByStatus(OrderStatus.EN_LIVRAISON) +
-                                orderRepository.countByStatus(OrderStatus.ENVOYE) +
-                                orderRepository.countByStatus(OrderStatus.EN_PREPARATION);
-        long returnedOrders = orderRepository.countByStatus(OrderStatus.RETOURNE);
+        // Counts — filtered by date range if provided
+        long totalOrders = filtered
+                ? orderRepository.countByDateRange(from, to)
+                : orderRepository.count();
+
+        // todayOrders / weekOrders / monthOrders = toujours relatifs à aujourd'hui
+        long todayOrders  = orderRepository.countByDateRange(todayStart, now);
+        long weekOrders   = orderRepository.countByDateRange(weekStart, now);
+        long monthOrders  = orderRepository.countByDateRange(monthStart, now);
+
+        long confirmedOrders = filtered
+                ? orderRepository.countByStatusesAndDateRange(CONFIRMED_PIPELINE_STATUSES, from, to)
+                : orderRepository.countByStatuses(CONFIRMED_PIPELINE_STATUSES);
+        long cancelledOrders = filtered ? countCancelledFiltered(from, to) : countCancelled();
+        long doublonOrders   = filtered
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.DOUBLON, from, to)
+                : orderRepository.countByStatus(OrderStatus.DOUBLON);
+        long pendingOrders   = filtered ? countPendingFiltered(from, to) : countPending();
+        long deliveredOrders = filtered
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.LIVRE, from, to)
+                : orderRepository.countByStatus(OrderStatus.LIVRE);
+        long inDeliveryOrders = filtered
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.EN_LIVRAISON, from, to)
+                  + orderRepository.countByStatusAndDateRange(OrderStatus.ENVOYE, from, to)
+                  + orderRepository.countByStatusAndDateRange(OrderStatus.EN_PREPARATION, from, to)
+                : orderRepository.countByStatus(OrderStatus.EN_LIVRAISON)
+                  + orderRepository.countByStatus(OrderStatus.ENVOYE)
+                  + orderRepository.countByStatus(OrderStatus.EN_PREPARATION);
+        long returnedOrders = filtered
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.RETOURNE, from, to)
+                : orderRepository.countByStatus(OrderStatus.RETOURNE);
 
         // Rates
         double confirmationRate = totalOrders > 0 ? round((double) confirmedOrders / totalOrders * 100) : 0;
@@ -68,20 +86,44 @@ public class AnalyticsService {
         double deliverySuccessRate = totalDeliveryAttempted > 0 ? round((double) deliveredOrders / totalDeliveryAttempted * 100) : 0;
         double returnRate = totalDeliveryAttempted > 0 ? round((double) returnedOrders / totalDeliveryAttempted * 100) : 0;
 
-        // Order by status breakdown
-        Map<String, Long> ordersByStatus = orderRepository.countGroupByStatus()
+        // Status breakdown
+        Map<String, Long> ordersByStatus = (filtered
+                ? orderRepository.countGroupByStatusAndDateRange(from, to)
+                : orderRepository.countGroupByStatus())
                 .stream().collect(Collectors.toMap(
                         row -> ((OrderStatus) row[0]).getLabel(),
                         row -> (Long) row[1]
                 ));
 
-        // Stock
-        long lowStockProducts = productRepository.findLowStockProducts().size();
-        long outOfStockProducts = productRepository.findOutOfStockProducts().size();
-        long activeAlerts = stockAlertRepository.findByResolvedFalse().size();
+        // Source breakdown
+        Map<String, Long> ordersBySource = (filtered
+                ? orderRepository.countGroupBySourceAndDateRange(from, to)
+                : orderRepository.countGroupBySource())
+                .stream().collect(Collectors.toMap(
+                        row -> ((OrderSource) row[0]).name(),
+                        row -> (Long) row[1]
+                ));
 
-        // Daily trend (last 7 days)
-        List<DailyStatsDto> dailyTrend = getDailyTrend(7);
+        // Revenue
+        BigDecimal totalRevenue = filtered
+                ? orderRepository.sumRevenueByStatusAndDateRange(OrderStatus.LIVRE, from, to)
+                : calculateRevenue(OrderStatus.LIVRE);
+        BigDecimal confirmedRevenue = filtered
+                ? orderRepository.sumRevenueByStatusAndDateRange(OrderStatus.CONFIRME, from, to)
+                : calculateRevenue(OrderStatus.CONFIRME);
+        BigDecimal avgOrderValue = filtered
+                ? orderRepository.avgOrderValueByDateRange(from, to)
+                : calculateAverageOrderValue();
+
+        // Stock (pas de filtre par date — c'est l'état actuel du stock)
+        long lowStockProducts   = productRepository.findLowStockProducts().size();
+        long outOfStockProducts = productRepository.findOutOfStockProducts().size();
+        long activeAlerts       = stockAlertRepository.findByResolvedFalse().size();
+
+        // Daily trend — sur la plage filtrée ou les 7 derniers jours
+        List<DailyStatsDto> dailyTrend = filtered
+                ? getDailyTrendBetween(from, to)
+                : getDailyTrend(7);
 
         return KpiSummaryDto.builder()
                 .totalOrders(totalOrders)
@@ -99,14 +141,14 @@ public class AnalyticsService {
                 .returnedOrders(returnedOrders)
                 .deliverySuccessRate(deliverySuccessRate)
                 .returnRate(returnRate)
-                .totalRevenue(calculateRevenue(OrderStatus.LIVRE))
-                .confirmedRevenue(calculateRevenue(OrderStatus.CONFIRME))
-                .averageOrderValue(calculateAverageOrderValue())
+                .totalRevenue(totalRevenue)
+                .confirmedRevenue(confirmedRevenue)
+                .averageOrderValue(avgOrderValue)
                 .lowStockProducts(lowStockProducts)
                 .outOfStockProducts(outOfStockProducts)
                 .activeAlerts(activeAlerts)
                 .ordersByStatus(ordersByStatus)
-                .ordersBySource(getOrdersBySource())
+                .ordersBySource(ordersBySource)
                 .dailyTrend(dailyTrend)
                 .build();
     }
@@ -182,6 +224,21 @@ public class AnalyticsService {
     }
 
     @Transactional(readOnly = true)
+    public List<DailyStatsDto> getDailyTrendBetween(LocalDateTime from, LocalDateTime to) {
+        return orderRepository.getDailyStats(from, to).stream().map(row -> {
+            long total     = ((Number) row[1]).longValue();
+            long confirmed = ((Number) row[2]).longValue();
+            return DailyStatsDto.builder()
+                    .date(row[0].toString())
+                    .totalOrders(total)
+                    .confirmedOrders(confirmed)
+                    .confirmationRate(total > 0 ? round((double) confirmed / total * 100) : 0)
+                    .revenue(BigDecimal.ZERO)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<DailyStatsDto> getDailyTrend(int days) {
         LocalDateTime from = LocalDate.now().minusDays(days - 1).atStartOfDay();
         LocalDateTime to = LocalDateTime.now();
@@ -207,6 +264,11 @@ public class AnalyticsService {
 
     private static final List<OrderStatus> CANCELLED_STATUSES = List.of(
             OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX, OrderStatus.FAKE_ORDER);
+
+    private static final List<OrderStatus> PENDING_STATUSES = List.of(
+            OrderStatus.NOUVEAU, OrderStatus.APPEL_1, OrderStatus.APPEL_2, OrderStatus.APPEL_3,
+            OrderStatus.MESSAGE_WHATSAPP, OrderStatus.PAS_DE_REPONSE,
+            OrderStatus.INJOIGNABLE, OrderStatus.REPORTE);
 
     // All statuses that represent an order confirmed by an agent (including delivery pipeline)
     private static final List<OrderStatus> CONFIRMED_PIPELINE_STATUSES = List.of(
@@ -282,6 +344,10 @@ public class AnalyticsService {
                orderRepository.countByStatus(OrderStatus.FAKE_ORDER);
     }
 
+    private long countCancelledFiltered(LocalDateTime from, LocalDateTime to) {
+        return orderRepository.countByStatusesAndDateRange(CANCELLED_STATUSES, from, to);
+    }
+
     private long countPending() {
         return orderRepository.countByStatus(OrderStatus.NOUVEAU) +
                orderRepository.countByStatus(OrderStatus.APPEL_1) +
@@ -291,6 +357,10 @@ public class AnalyticsService {
                orderRepository.countByStatus(OrderStatus.PAS_DE_REPONSE) +
                orderRepository.countByStatus(OrderStatus.INJOIGNABLE) +
                orderRepository.countByStatus(OrderStatus.REPORTE);
+    }
+
+    private long countPendingFiltered(LocalDateTime from, LocalDateTime to) {
+        return orderRepository.countByStatusesAndDateRange(PENDING_STATUSES, from, to);
     }
 
     private long countCancelledForAgent(Long agentId) {
