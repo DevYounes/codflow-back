@@ -4,6 +4,7 @@ import com.codflow.backend.common.dto.ApiResponse;
 import com.codflow.backend.importer.dto.ImportResultDto;
 import com.codflow.backend.importer.service.AutoImportService;
 import com.codflow.backend.importer.service.ExcelImportService;
+import com.codflow.backend.importer.service.ShopifyImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/import")
 @RequiredArgsConstructor
@@ -21,6 +24,7 @@ public class ImportController {
 
     private final ExcelImportService excelImportService;
     private final AutoImportService autoImportService;
+    private final ShopifyImportService shopifyImportService;
 
     /**
      * Manual upload of an Excel file (.xlsx).
@@ -71,6 +75,35 @@ public class ImportController {
             ImportResultDto result = autoImportService.triggerImport();
             return ResponseEntity.ok(ApiResponse.success(
                     String.format("Import terminé: %d importées, %d ignorées, %d erreurs",
+                            result.getImported(), result.getSkipped(), result.getErrors()),
+                    result));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/shopify/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Statut de la configuration Shopify")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> shopifyStatus() {
+        return ResponseEntity.ok(ApiResponse.success(shopifyImportService.getStatus()));
+    }
+
+    @PostMapping("/shopify/trigger")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+        summary = "Déclencher manuellement l'import depuis Shopify",
+        description = """
+            Importe les nouvelles commandes Shopify depuis le dernier ordre synchronisé.
+            Pré-requis: définir shopify.store.domain et shopify.access.token via PUT /api/v1/settings/{key}.
+            L'import est incrémental: seules les nouvelles commandes (depuis le dernier ID synchronisé) sont importées.
+            """
+    )
+    public ResponseEntity<ApiResponse<ImportResultDto>> triggerShopifyImport() {
+        try {
+            ImportResultDto result = shopifyImportService.triggerImport();
+            return ResponseEntity.ok(ApiResponse.success(
+                    String.format("Import Shopify terminé: %d importées, %d ignorées, %d erreurs",
                             result.getImported(), result.getSkipped(), result.getErrors()),
                     result));
         } catch (IllegalStateException e) {

@@ -13,8 +13,12 @@ import java.util.Optional;
 public class SystemSettingService {
 
     // Well-known keys
-    public static final String KEY_SHEET_IMPORT_URL    = "googlesheet.import.url";
-    public static final String KEY_ROUND_ROBIN_POINTER = "assignment.round_robin.last_index";
+    public static final String KEY_SHEET_IMPORT_URL      = "googlesheet.import.url";
+    public static final String KEY_ROUND_ROBIN_POINTER   = "assignment.round_robin.last_index";
+    public static final String KEY_SHOPIFY_DOMAIN        = "shopify.store.domain";
+    public static final String KEY_SHOPIFY_TOKEN         = "shopify.access.token";
+    public static final String KEY_SHOPIFY_ENABLED       = "shopify.import.enabled";
+    public static final String KEY_SHOPIFY_LAST_ORDER_ID = "shopify.import.last_order_id";
 
     private final SystemSettingRepository repository;
 

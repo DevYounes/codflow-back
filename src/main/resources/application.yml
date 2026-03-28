@@ -65,6 +65,9 @@ app:
   delivery:
     sync-interval-ms: ${DELIVERY_SYNC_INTERVAL:300000}  # 5 minutes
 
+  shopify:
+    sync-interval-ms: ${SHOPIFY_SYNC_INTERVAL:300000}   # 5 minutes
+
   ozon:
     customer-id: ${OZON_CUSTOMER_ID:}
     api-key: ${OZON_API_KEY:}
