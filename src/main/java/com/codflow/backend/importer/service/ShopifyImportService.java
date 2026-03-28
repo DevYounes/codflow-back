@@ -18,9 +18,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import org.springframework.http.MediaType;
+
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Imports orders from Shopify REST API using incremental sync (since_id).
@@ -99,6 +105,82 @@ public class ShopifyImportService {
                 "domain",     domain != null ? domain : "",
                 "lastSyncedOrderId", lastId
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // OAuth flow
+    // -----------------------------------------------------------------------
+
+    /**
+     * Step 1: Generates the Shopify OAuth authorization URL.
+     * Requires shopify.store.domain and shopify.app.client_id to be configured.
+     */
+    @Transactional
+    public String startOAuth(String redirectUri) {
+        String clientId = settingService.get(SystemSettingService.KEY_SHOPIFY_CLIENT_ID)
+                .orElseThrow(() -> new IllegalStateException(
+                        "shopify.app.client_id non configuré. Définissez-le via PUT /api/v1/settings/shopify.app.client_id"));
+        String domain = settingService.get(SystemSettingService.KEY_SHOPIFY_DOMAIN)
+                .orElseThrow(() -> new IllegalStateException(
+                        "shopify.store.domain non configuré. Définissez-le via PUT /api/v1/settings/shopify.store.domain"));
+
+        String state = UUID.randomUUID().toString().replace("-", "");
+        settingService.set(SystemSettingService.KEY_SHOPIFY_OAUTH_STATE, state);
+
+        String encodedRedirect = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
+        return "https://" + domain + "/admin/oauth/authorize"
+                + "?client_id=" + clientId
+                + "&scope=read_orders,write_orders"
+                + "&redirect_uri=" + encodedRedirect
+                + "&state=" + state;
+    }
+
+    /**
+     * Step 2: Exchanges the OAuth code for an access token and stores it.
+     * Called from the OAuth callback endpoint after Shopify redirects back.
+     */
+    @Transactional
+    public void completeOAuth(String shop, String code, String state) {
+        String expectedState = settingService.get(SystemSettingService.KEY_SHOPIFY_OAUTH_STATE).orElse(null);
+        if (expectedState == null || expectedState.isBlank() || !expectedState.equals(state)) {
+            throw new IllegalStateException("State OAuth invalide — lien expiré ou attaque CSRF détectée");
+        }
+
+        String clientId = settingService.get(SystemSettingService.KEY_SHOPIFY_CLIENT_ID)
+                .orElseThrow(() -> new IllegalStateException("shopify.app.client_id non configuré"));
+        String clientSecret = settingService.get(SystemSettingService.KEY_SHOPIFY_CLIENT_SECRET)
+                .orElseThrow(() -> new IllegalStateException("shopify.app.client_secret non configuré"));
+
+        try {
+            String responseBody = webClientBuilder.build()
+                    .post()
+                    .uri("https://" + shop + "/admin/oauth/access_token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(Map.of("client_id", clientId, "client_secret", clientSecret, "code", code))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            JsonNode json = objectMapper.readTree(responseBody);
+            String accessToken = json.path("access_token").asText(null);
+            if (accessToken == null || accessToken.isBlank()) {
+                throw new IllegalStateException("Token vide dans la réponse Shopify");
+            }
+
+            settingService.set(SystemSettingService.KEY_SHOPIFY_TOKEN, accessToken);
+            settingService.set(SystemSettingService.KEY_SHOPIFY_DOMAIN, shop);
+            settingService.set(SystemSettingService.KEY_SHOPIFY_ENABLED, "true");
+            settingService.set(SystemSettingService.KEY_SHOPIFY_OAUTH_STATE, ""); // invalidate state
+
+            log.info("Shopify OAuth terminé avec succès pour la boutique: {}", shop);
+        } catch (WebClientResponseException e) {
+            throw new IllegalStateException(
+                    "Erreur Shopify OAuth (HTTP " + e.getStatusCode().value() + "): " + e.getResponseBodyAsString());
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Erreur lors de l'échange OAuth: " + e.getMessage());
+        }
     }
 
     // -----------------------------------------------------------------------

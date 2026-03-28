@@ -89,6 +89,58 @@ public class ImportController {
         return ResponseEntity.ok(ApiResponse.success(shopifyImportService.getStatus()));
     }
 
+    /**
+     * Step 1 of OAuth: returns the Shopify authorization URL.
+     * Pre-requisites (configure via PUT /api/v1/settings/{key}):
+     *   shopify.store.domain   → castello.myshopify.com
+     *   shopify.app.client_id  → Client ID from Dev Dashboard
+     *   shopify.app.client_secret → Client Secret from Dev Dashboard
+     *
+     * The redirectUri must match EXACTLY what is configured in the Dev Dashboard app.
+     */
+    @GetMapping("/shopify/oauth/start")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Démarrer l'authentification OAuth Shopify",
+        description = """
+            Génère l'URL d'autorisation Shopify OAuth. Ouvrez l'URL retournée dans votre navigateur pour autoriser l'app.
+            Pré-requis: shopify.store.domain, shopify.app.client_id, shopify.app.client_secret configurés via PUT /api/v1/settings/{key}.
+            Le redirectUri doit correspondre exactement à l'URL configurée dans le Dev Dashboard Shopify.
+            """
+    )
+    public ResponseEntity<ApiResponse<Map<String, String>>> startShopifyOAuth(
+            @RequestParam String redirectUri) {
+        try {
+            String oauthUrl = shopifyImportService.startOAuth(redirectUri);
+            return ResponseEntity.ok(ApiResponse.success(
+                    "URL OAuth générée. Ouvrez cette URL dans votre navigateur pour autoriser l'application.",
+                    Map.of("oauthUrl", oauthUrl)));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Step 2 of OAuth: Shopify redirects here after authorization.
+     * This endpoint is PUBLIC (no JWT required) — Shopify calls it via browser redirect.
+     * Configure this URL in the Dev Dashboard: https://api.codflow.ma/api/v1/import/shopify/oauth/callback
+     */
+    @GetMapping("/shopify/oauth/callback")
+    @Operation(summary = "Callback OAuth Shopify (appelé automatiquement par Shopify après autorisation)")
+    public ResponseEntity<ApiResponse<String>> shopifyOAuthCallback(
+            @RequestParam String shop,
+            @RequestParam String code,
+            @RequestParam String state) {
+        try {
+            shopifyImportService.completeOAuth(shop, code, state);
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Connexion Shopify réussie! Le token a été enregistré et l'import automatique est activé.",
+                    shop));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     @PostMapping("/shopify/trigger")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(

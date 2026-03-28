@@ -19,6 +19,9 @@ public class SystemSettingService {
     public static final String KEY_SHOPIFY_TOKEN         = "shopify.access.token";
     public static final String KEY_SHOPIFY_ENABLED       = "shopify.import.enabled";
     public static final String KEY_SHOPIFY_LAST_ORDER_ID = "shopify.import.last_order_id";
+    public static final String KEY_SHOPIFY_CLIENT_ID     = "shopify.app.client_id";
+    public static final String KEY_SHOPIFY_CLIENT_SECRET = "shopify.app.client_secret";
+    public static final String KEY_SHOPIFY_OAUTH_STATE   = "shopify.oauth.state";
 
     private final SystemSettingRepository repository;
 
