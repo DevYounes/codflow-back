@@ -1,6 +1,7 @@
 package com.codflow.backend.order.entity;
 
 import com.codflow.backend.common.entity.BaseEntity;
+import com.codflow.backend.customer.entity.Customer;
 import com.codflow.backend.order.enums.OrderSource;
 import com.codflow.backend.order.enums.OrderStatus;
 import com.codflow.backend.team.entity.User;
@@ -80,6 +81,11 @@ public class Order extends BaseEntity {
 
     @Column(name = "potential_duplicate", nullable = false)
     private boolean potentialDuplicate = false;
+
+    // Customer link
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
+    private Customer customer;
 
     // Assignment
     @ManyToOne(fetch = FetchType.LAZY)

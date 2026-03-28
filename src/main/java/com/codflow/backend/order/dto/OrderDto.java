@@ -34,6 +34,7 @@ public class OrderDto {
     private ShipmentStatus deliveryStatus;
     private String deliveryStatusLabel;
     private String trackingNumber;
+    private Long customerId;
     private Long assignedToId;
     private String assignedToName;
     private LocalDateTime assignedAt;

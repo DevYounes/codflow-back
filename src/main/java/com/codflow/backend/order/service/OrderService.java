@@ -4,6 +4,8 @@ import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.common.util.PhoneNormalizer;
+import com.codflow.backend.customer.entity.Customer;
+import com.codflow.backend.customer.repository.CustomerRepository;
 import com.codflow.backend.delivery.entity.DeliveryShipment;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.dto.*;
@@ -52,6 +54,7 @@ public class OrderService {
     private final DeliveryShipmentRepository shipmentRepository;
     private final StockService stockService;
     private final RoundRobinAssignmentService roundRobinAssignmentService;
+    private final CustomerRepository customerRepository;
 
     @Transactional
     public OrderDto createOrder(CreateOrderRequest request, UserPrincipal principal) {
@@ -77,6 +80,13 @@ public class OrderService {
         if (normalizedPhone != null && orderRepository.existsByCustomerPhoneNormalized(normalizedPhone)) {
             order.setPotentialDuplicate(true);
         }
+
+        // Link or create customer
+        Customer customer = findOrCreateCustomer(
+                request.getCustomerPhone(), normalizedPhone,
+                request.getCustomerName(), request.getAddress(), request.getVille());
+        order.setCustomer(customer);
+
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
         order.setShippingCost(request.getShippingCost() != null ? request.getShippingCost() : java.math.BigDecimal.ZERO);
@@ -373,6 +383,33 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Commande", id));
     }
 
+    private Customer findOrCreateCustomer(String phone, String phoneNormalized,
+                                          String fullName, String address, String ville) {
+        try {
+            if (phoneNormalized != null) {
+                return customerRepository.findByPhoneNormalized(phoneNormalized)
+                        .orElseGet(() -> createCustomer(phone, phoneNormalized, fullName, address, ville));
+            }
+            return customerRepository.findByPhone(phone)
+                    .orElseGet(() -> createCustomer(phone, null, fullName, address, ville));
+        } catch (Exception e) {
+            log.warn("Could not link customer for phone {}: {}", phone, e.getMessage());
+            return null;
+        }
+    }
+
+    private Customer createCustomer(String phone, String phoneNormalized,
+                                    String fullName, String address, String ville) {
+        com.codflow.backend.customer.entity.Customer c = new com.codflow.backend.customer.entity.Customer();
+        c.setPhone(phone);
+        c.setPhoneNormalized(phoneNormalized);
+        c.setFullName(fullName != null ? fullName : "Client inconnu");
+        c.setAddress(address);
+        c.setVille(ville);
+        c.setStatus(com.codflow.backend.customer.enums.CustomerStatus.ACTIVE);
+        return customerRepository.save(c);
+    }
+
     public OrderDto toDto(Order order, boolean withHistory) {
         List<OrderItemDto> items = order.getItems().stream().map(item -> {
             ProductVariant v = item.getVariant();
@@ -430,6 +467,7 @@ public class OrderService {
                 .deliveryStatus(shipment != null ? shipment.getStatus() : null)
                 .deliveryStatusLabel(shipment != null ? shipment.getStatus().getLabel() : null)
                 .trackingNumber(shipment != null ? shipment.getTrackingNumber() : null)
+                .customerId(order.getCustomer() != null ? order.getCustomer().getId() : null)
                 .assignedToId(order.getAssignedTo() != null ? order.getAssignedTo().getId() : null)
                 .assignedToName(order.getAssignedTo() != null ? order.getAssignedTo().getFullName() : null)
                 .assignedAt(order.getAssignedAt())
