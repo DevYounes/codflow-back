@@ -23,13 +23,14 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     @Query("""
             SELECT c FROM Customer c
             WHERE (:status IS NULL OR c.status = :status)
-              AND (:search IS NULL OR LOWER(c.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR c.phone LIKE CONCAT('%', :search, '%')
-                   OR LOWER(c.ville) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:searchPattern IS NULL
+                   OR LOWER(c.fullName) LIKE :searchPattern
+                   OR c.phone LIKE :searchPattern
+                   OR LOWER(c.ville) LIKE :searchPattern)
             """)
     Page<Customer> findWithFilters(
             @Param("status") CustomerStatus status,
-            @Param("search") String search,
+            @Param("searchPattern") String searchPattern,
             Pageable pageable);
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.customer.id = :customerId")

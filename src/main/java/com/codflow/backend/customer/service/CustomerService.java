@@ -45,8 +45,10 @@ public class CustomerService {
 
     @Transactional(readOnly = true)
     public Page<CustomerDto> getCustomers(CustomerStatus status, String search, Pageable pageable) {
-        String searchTerm = (search != null && !search.isBlank()) ? search.trim() : null;
-        return customerRepository.findWithFilters(status, searchTerm, pageable)
+        String searchPattern = (search != null && !search.isBlank())
+                ? "%" + search.trim().toLowerCase() + "%"
+                : null;
+        return customerRepository.findWithFilters(status, searchPattern, pageable)
                 .map(this::toDto);
     }
 
