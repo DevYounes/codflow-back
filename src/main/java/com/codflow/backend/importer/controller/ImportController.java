@@ -27,59 +27,26 @@ public class ImportController {
     private final ShopifyImportService shopifyImportService;
 
     /**
-     * Manual upload of an Excel file (.xlsx).
+     * Excel upload — DISABLED. Only Shopify is the active import source.
      */
     @PostMapping(value = "/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    @Operation(summary = "Importer depuis un fichier Excel uploadé manuellement")
+    @Operation(summary = "[DÉSACTIVÉ] Import Excel — utiliser Shopify")
     public ResponseEntity<ApiResponse<ImportResultDto>> importFromExcel(
             @RequestParam("file") MultipartFile file) {
-
-        if (file.isEmpty()) {
-            return ResponseEntity.badRequest().body(ApiResponse.error("Le fichier est vide"));
-        }
-        String filename = file.getOriginalFilename();
-        if (filename == null || (!filename.endsWith(".xlsx") && !filename.endsWith(".xls"))) {
-            return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Format attendu: .xlsx ou .xls"));
-        }
-        ImportResultDto result = excelImportService.importFromExcel(file);
-        return ResponseEntity.ok(ApiResponse.success(
-                String.format("Import terminé: %d importées, %d ignorées, %d erreurs",
-                        result.getImported(), result.getSkipped(), result.getErrors()),
-                result));
+        return ResponseEntity.status(410)
+                .body(ApiResponse.error("Import Excel désactivé. Seul l'import Shopify est actif."));
     }
 
     /**
-     * Triggers an immediate import from the configured Google Sheets URL.
-     * Configure the URL first via: PUT /api/v1/settings/googlesheet.import.url
-     *
-     * The Google Sheet must be shared as "Anyone with the link can view".
-     *
-     * Expected columns:
-     *   Order id | Order date | Full name | Phone | City | Adresse | Product name | Variente | Price | Quantité
+     * Google Sheets trigger — DISABLED. Only Shopify is the active import source.
      */
     @PostMapping("/googlesheet/trigger")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    @Operation(
-        summary = "Déclencher manuellement l'import depuis Google Sheets",
-        description = """
-            Importe les nouvelles lignes depuis la feuille Google Sheets configurée.
-            Colonnes attendues: Order id | Order date | Full name | Phone | City | Adresse | Product name | Variente | Price | Quantité
-            Pré-requis: définir l'URL via PUT /api/v1/settings/googlesheet.import.url
-            Le partage doit être activé sur "Tout le monde avec le lien peut voir".
-            """
-    )
+    @Operation(summary = "[DÉSACTIVÉ] Import Google Sheets — utiliser Shopify")
     public ResponseEntity<ApiResponse<ImportResultDto>> triggerGoogleSheetsImport() {
-        try {
-            ImportResultDto result = autoImportService.triggerImport();
-            return ResponseEntity.ok(ApiResponse.success(
-                    String.format("Import terminé: %d importées, %d ignorées, %d erreurs",
-                            result.getImported(), result.getSkipped(), result.getErrors()),
-                    result));
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
-        }
+        return ResponseEntity.status(410)
+                .body(ApiResponse.error("Import Google Sheets désactivé. Seul l'import Shopify est actif."));
     }
 
     @GetMapping("/shopify/status")

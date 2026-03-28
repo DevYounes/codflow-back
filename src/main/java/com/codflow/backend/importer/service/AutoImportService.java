@@ -61,9 +61,10 @@ public class AutoImportService {
     private final WebClient.Builder webClientBuilder;
 
     /**
-     * Runs every minute by default. Fetches the Google Sheet and imports new rows.
+     * Google Sheets auto-import — DISABLED (Shopify is the only active source).
+     * Kept for reference; remove @Scheduled to re-enable.
      */
-    @Scheduled(fixedDelayString = "${app.import.check-interval-ms:60000}")
+    // @Scheduled(fixedDelayString = "${app.import.check-interval-ms:60000}")
     public void checkAndImport() {
         String sheetUrl = settingService.get(SystemSettingService.KEY_SHEET_IMPORT_URL).orElse(null);
         if (sheetUrl == null || sheetUrl.isBlank()) {
