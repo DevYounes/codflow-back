@@ -105,7 +105,7 @@ public class StockService {
     }
 
     @Transactional
-    public void restoreStockForCancelledOrder(Long productId, int quantity, Long orderId) {
+    public void restoreStockForOrder(Long productId, int quantity, Long orderId, String reason) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
 
@@ -121,7 +121,7 @@ public class StockService {
         movement.setQuantity(quantity);
         movement.setPreviousStock(previousStock);
         movement.setNewStock(newStock);
-        movement.setReason("Commande annulée");
+        movement.setReason(reason != null ? reason : "Retour commande");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);
         stockMovementRepository.save(movement);

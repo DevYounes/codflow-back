@@ -102,6 +102,14 @@ public class Order extends BaseEntity {
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    /**
+     * True once stock has been deducted for this order (at CONFIRME).
+     * Used to guard against double-deduction and to know whether
+     * stock must be restored on RETOURNE / ANNULE / ECHEC_LIVRAISON.
+     */
+    @Column(name = "stock_deducted", nullable = false)
+    private boolean stockDeducted = false;
+
     // External references
     @Column(name = "shopify_order_id", length = 100)
     private String shopifyOrderId;

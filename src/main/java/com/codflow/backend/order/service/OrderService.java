@@ -151,16 +151,26 @@ public class OrderService {
             if (request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()) {
                 order.setDeliveryCityId(request.getDeliveryCityId());
             }
-            // Deduct stock for confirmed orders
-            deductStockForOrder(order);
+            // Deduct stock only once
+            if (!order.isStockDeducted()) {
+                deductStockForOrder(order);
+                order.setStockDeducted(true);
+            }
         }
 
         if (newStatus.isCancelled() && order.getCancelledAt() == null) {
             order.setCancelledAt(LocalDateTime.now());
-            // Restore stock if was confirmed
-            if (previousStatus.isConfirmed()) {
-                restoreStockForOrder(order);
+            // Restore stock if it was previously deducted
+            if (order.isStockDeducted()) {
+                restoreStockForOrder(order, "Commande annulée");
+                order.setStockDeducted(false);
             }
+        }
+
+        // Retour physique de la marchandise → remettre en stock
+        if (newStatus == OrderStatus.RETOURNE && order.isStockDeducted()) {
+            restoreStockForOrder(order, "Colis retourné");
+            order.setStockDeducted(false);
         }
 
         recordStatusChange(order, previousStatus, newStatus, principal, request.getNotes());
@@ -354,11 +364,11 @@ public class OrderService {
         });
     }
 
-    private void restoreStockForOrder(Order order) {
+    private void restoreStockForOrder(Order order, String reason) {
         order.getItems().forEach(item -> {
             if (item.getProduct() != null) {
                 try {
-                    stockService.restoreStockForCancelledOrder(item.getProduct().getId(), item.getQuantity(), order.getId());
+                    stockService.restoreStockForOrder(item.getProduct().getId(), item.getQuantity(), order.getId(), reason);
                 } catch (Exception e) {
                     log.warn("Could not restore stock for product {} in order {}: {}",
                             item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
