@@ -264,7 +264,7 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
                     .block();
 
             JsonNode json = objectMapper.readTree(responseBody);
-            String ref = json.path("ref").asText(null);
+            String ref = json.path("ADD-BL").path("NEW-BL").path("REF").asText(null);
             if (!StringUtils.hasText(ref)) {
                 throw new IllegalStateException("Ozon Express n'a pas retourné de référence BL. Réponse: " + responseBody);
             }
