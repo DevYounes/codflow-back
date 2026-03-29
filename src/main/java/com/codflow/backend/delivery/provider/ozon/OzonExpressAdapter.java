@@ -58,10 +58,9 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
     @Override
     public ShipmentResponse createShipment(ShipmentRequest request, ProviderConfig config) {
         try {
-            // DB values take precedence; fall back to environment variables
-            String customerId = StringUtils.hasText(config.apiToken())   ? config.apiToken()   : properties.getCustomerId();
-            String apiKey     = StringUtils.hasText(config.apiKey())     ? config.apiKey()     : properties.getApiKey();
-            String baseUrl    = StringUtils.hasText(config.apiBaseUrl()) ? config.apiBaseUrl() : properties.getApiBaseUrl();
+            String customerId = resolveCustomerId(config);
+            String apiKey     = resolveApiKey(config);
+            String baseUrl    = resolveBaseUrl(config);
 
             if (!StringUtils.hasText(customerId) || !StringUtils.hasText(apiKey)) {
                 return ShipmentResponse.builder()
@@ -158,9 +157,9 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
     @Override
     public TrackingInfo trackShipment(String trackingNumber, ProviderConfig config) {
         try {
-            String customerId = StringUtils.hasText(config.apiToken())   ? config.apiToken()   : properties.getCustomerId();
-            String apiKey     = StringUtils.hasText(config.apiKey())     ? config.apiKey()     : properties.getApiKey();
-            String baseUrl    = StringUtils.hasText(config.apiBaseUrl()) ? config.apiBaseUrl() : properties.getApiBaseUrl();
+            String customerId = resolveCustomerId(config);
+            String apiKey     = resolveApiKey(config);
+            String baseUrl    = resolveBaseUrl(config);
 
             if (!StringUtils.hasText(customerId) || !StringUtils.hasText(apiKey)) {
                 log.error("Ozon Express credentials not configured for tracking {}", trackingNumber);
@@ -236,6 +235,138 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
                     .events(List.of())
                     .build();
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Delivery Note — 3-step flow (create → add parcels → save)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Step 1: Create an empty Bon de Livraison.
+     * GET /customers/{id}/{key}/add-delivery-note
+     * Returns: { "ref": "BL240115001", ... }
+     */
+    public String createDeliveryNote(ProviderConfig config) {
+        String customerId = resolveCustomerId(config);
+        String apiKey     = resolveApiKey(config);
+        String baseUrl    = resolveBaseUrl(config);
+
+        if (!StringUtils.hasText(customerId) || !StringUtils.hasText(apiKey)) {
+            throw new IllegalStateException("Credentials Ozon Express non configurés (customerId / apiKey manquant)");
+        }
+
+        try {
+            WebClient client = webClientBuilder.baseUrl(baseUrl).build();
+            String responseBody = client.post()
+                    .uri("/customers/{id}/{key}/add-delivery-note", customerId, apiKey)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            JsonNode json = objectMapper.readTree(responseBody);
+            String ref = json.path("ref").asText(null);
+            if (!StringUtils.hasText(ref)) {
+                throw new IllegalStateException("Ozon Express n'a pas retourné de référence BL. Réponse: " + responseBody);
+            }
+            log.info("Ozon Express delivery note created: ref={}", ref);
+            return ref;
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error creating Ozon Express delivery note: {}", e.getMessage(), e);
+            throw new IllegalStateException("Erreur lors de la création du BL: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Step 2: Add tracking numbers (colis) to the BL.
+     * POST /customers/{id}/{key}/add-parcel-to-delivery-note
+     * Form params: Ref={ref} + Codes[0]=TN1 + Codes[1]=TN2 + ...
+     */
+    public void addParcelsToDeliveryNote(String ref, List<String> trackingNumbers, ProviderConfig config) {
+        String customerId = resolveCustomerId(config);
+        String apiKey     = resolveApiKey(config);
+        String baseUrl    = resolveBaseUrl(config);
+
+        try {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("Ref", ref);
+            for (int i = 0; i < trackingNumbers.size(); i++) {
+                form.add("Codes[" + i + "]", trackingNumbers.get(i));
+            }
+
+            WebClient client = webClientBuilder.baseUrl(baseUrl).build();
+            String responseBody = client.post()
+                    .uri("/customers/{id}/{key}/add-parcel-to-delivery-note", customerId, apiKey)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(BodyInserters.fromFormData(form))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            log.info("Ozon Express add parcels to BL {}: {}", ref, responseBody);
+        } catch (Exception e) {
+            log.error("Error adding parcels to Ozon Express delivery note {}: {}", ref, e.getMessage(), e);
+            throw new IllegalStateException("Erreur lors de l'ajout des colis au BL: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Step 3: Save (finalize) the BL.
+     * POST /customers/{id}/{key}/save-delivery-note
+     * Form params: Ref={ref}
+     */
+    public void saveDeliveryNote(String ref, ProviderConfig config) {
+        String customerId = resolveCustomerId(config);
+        String apiKey     = resolveApiKey(config);
+        String baseUrl    = resolveBaseUrl(config);
+
+        try {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("Ref", ref);
+
+            WebClient client = webClientBuilder.baseUrl(baseUrl).build();
+            String responseBody = client.post()
+                    .uri("/customers/{id}/{key}/save-delivery-note", customerId, apiKey)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(BodyInserters.fromFormData(form))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            log.info("Ozon Express delivery note {} saved: {}", ref, responseBody);
+        } catch (Exception e) {
+            log.error("Error saving Ozon Express delivery note {}: {}", ref, e.getMessage(), e);
+            throw new IllegalStateException("Erreur lors de la sauvegarde du BL: " + e.getMessage());
+        }
+    }
+
+    /** Build the PDF URLs for a given BL ref (no API call needed). */
+    public record DeliveryNotePdfs(String standard, String ticketsA4, String tickets10x10) {}
+
+    public DeliveryNotePdfs getPdfUrls(String ref) {
+        String base = "https://client.ozoneexpress.ma";
+        return new DeliveryNotePdfs(
+                base + "/pdf-delivery-note?dn-ref=" + ref,
+                base + "/pdf-delivery-note-tickets?dn-ref=" + ref,
+                base + "/pdf-delivery-note-tickets-4-4?dn-ref=" + ref
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Credential helpers
+    // -------------------------------------------------------------------------
+
+    private String resolveCustomerId(ProviderConfig config) {
+        return StringUtils.hasText(config.apiToken()) ? config.apiToken() : properties.getCustomerId();
+    }
+
+    private String resolveApiKey(ProviderConfig config) {
+        return StringUtils.hasText(config.apiKey()) ? config.apiKey() : properties.getApiKey();
+    }
+
+    private String resolveBaseUrl(ProviderConfig config) {
+        return StringUtils.hasText(config.apiBaseUrl()) ? config.apiBaseUrl() : properties.getApiBaseUrl();
     }
 
     // -------------------------------------------------------------------------

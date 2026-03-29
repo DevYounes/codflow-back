@@ -1,10 +1,13 @@
 package com.codflow.backend.delivery.controller;
 
 import com.codflow.backend.common.dto.ApiResponse;
+import com.codflow.backend.delivery.dto.CreateDeliveryNoteRequest;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
+import com.codflow.backend.delivery.dto.DeliveryNoteDto;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
 import com.codflow.backend.delivery.dto.UpdateProviderConfigRequest;
+import com.codflow.backend.delivery.service.DeliveryNoteService;
 import com.codflow.backend.delivery.entity.DeliveryProviderConfig;
 import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.provider.DeliveryProviderRegistry;
@@ -14,6 +17,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -32,6 +36,7 @@ import java.util.List;
 public class DeliveryController {
 
     private final DeliveryService deliveryService;
+    private final DeliveryNoteService deliveryNoteService;
     private final DeliveryProviderRepository providerRepository;
     private final DeliveryProviderRegistry providerRegistry;
 
@@ -116,5 +121,60 @@ public class DeliveryController {
         if (request.getActive() != null)     provider.setActive(request.getActive());
 
         return ResponseEntity.ok(ApiResponse.success("Configuration mise à jour", providerRepository.save(provider)));
+    }
+
+    // =========================================================================
+    // Bons de Livraison (Delivery Notes)
+    // =========================================================================
+
+    @PostMapping("/notes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+        summary = "Créer un bon de livraison (BL)",
+        description = """
+            Exécute le flux complet en 3 étapes auprès d'Ozon Express:
+            1. Crée le BL (add-delivery-note) → obtient la référence
+            2. Ajoute les colis au BL (add-parcel-to-delivery-note)
+            3. Sauvegarde le BL (save-delivery-note)
+            Retourne la référence BL + les liens PDF (standard, étiquettes A4, étiquettes 10x10cm).
+            """
+    )
+    public ResponseEntity<ApiResponse<DeliveryNoteDto>> createDeliveryNote(
+            @Valid @RequestBody CreateDeliveryNoteRequest request) {
+        try {
+            DeliveryNoteDto note = deliveryNoteService.createNote(request);
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Bon de livraison créé — réf: " + note.getRef(), note));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/notes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Lister les bons de livraison")
+    public ResponseEntity<ApiResponse<Page<DeliveryNoteDto>>> listDeliveryNotes(
+            @RequestParam(defaultValue = "0")    int page,
+            @RequestParam(defaultValue = "20")   int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        Sort sort = sortDir.equalsIgnoreCase("asc")
+                ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+        return ResponseEntity.ok(ApiResponse.success(deliveryNoteService.listNotes(pageable)));
+    }
+
+    @GetMapping("/notes/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Obtenir un bon de livraison par ID")
+    public ResponseEntity<ApiResponse<DeliveryNoteDto>> getDeliveryNote(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(deliveryNoteService.getNote(id)));
+    }
+
+    @GetMapping("/notes/ref/{ref}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Obtenir un bon de livraison par référence BL")
+    public ResponseEntity<ApiResponse<DeliveryNoteDto>> getDeliveryNoteByRef(@PathVariable String ref) {
+        return ResponseEntity.ok(ApiResponse.success(deliveryNoteService.getNoteByRef(ref)));
     }
 }
