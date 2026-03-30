@@ -39,16 +39,19 @@ public class ChargesService {
 
         BigDecimal deliveryCharges     = sum(shipments, "LIVRAISON");
         BigDecimal returnCharges       = sum(shipments, "RETOUR");
+        BigDecimal refusedCharges      = sum(shipments, "REFUS");
         BigDecimal cancellationCharges = sum(shipments, "ANNULATION");
-        BigDecimal totalCharges        = deliveryCharges.add(returnCharges).add(cancellationCharges);
+        BigDecimal totalCharges        = deliveryCharges.add(returnCharges)
+                                                        .add(refusedCharges)
+                                                        .add(cancellationCharges);
 
         BigDecimal avgDeliveryFee = avg(shipments.stream()
-                .map(DeliveryShipment::getDeliveryFee)
+                .map(DeliveryShipment::getDeliveredPrice)
                 .filter(f -> f != null && f.compareTo(BigDecimal.ZERO) > 0)
                 .toList());
 
         BigDecimal avgReturnFee = avg(shipments.stream()
-                .map(DeliveryShipment::getReturnFee)
+                .map(DeliveryShipment::getReturnedPrice)
                 .filter(f -> f != null && f.compareTo(BigDecimal.ZERO) > 0)
                 .toList());
 
@@ -63,6 +66,7 @@ public class ChargesService {
                 .totalCharges(totalCharges)
                 .deliveryCharges(deliveryCharges)
                 .returnCharges(returnCharges)
+                .refusedCharges(refusedCharges)
                 .cancellationCharges(cancellationCharges)
                 .avgDeliveryFee(avgDeliveryFee)
                 .avgReturnFee(avgReturnFee)
@@ -122,8 +126,9 @@ public class ChargesService {
                 .customerName(s.getOrder().getCustomerName())
                 .trackingNumber(s.getTrackingNumber())
                 .shipmentStatus(s.getStatus().name())
-                .deliveryFee(s.getDeliveryFee())
-                .returnFee(s.getReturnFee())
+                .deliveredPrice(s.getDeliveredPrice())
+                .returnedPrice(s.getReturnedPrice())
+                .refusedPrice(s.getRefusedPrice())
                 .appliedFee(s.getAppliedFee())
                 .appliedFeeType(s.getAppliedFeeType())
                 .finalizedAt(finalizedAt)

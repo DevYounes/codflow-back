@@ -56,9 +56,11 @@ public class OzonCityService {
                 String code = city.path("ID").asText(null);
                 String name = city.path("NAME").asText(null);
                 if (code != null && name != null) {
-                    BigDecimal deliveryFee = parseFee(city, "PRICE", "TARIF", "LIVRAISON");
-                    BigDecimal returnFee   = parseFee(city, "RETOUR", "PRICE_RETOUR", "RETOUR_TARIF");
-                    cities.add(new OzonCityDto(code, name, deliveryFee, returnFee));
+                    String ref            = city.path("REF").asText(null);
+                    BigDecimal delivered  = parseFee(city, "DELIVERED-PRICE");
+                    BigDecimal returned   = parseFee(city, "RETURNED-PRICE");
+                    BigDecimal refused    = parseFee(city, "REFUSED-PRICE");
+                    cities.add(new OzonCityDto(code, ref, name, delivered, returned, refused));
                 }
             });
         }
@@ -67,15 +69,12 @@ public class OzonCityService {
         return cities;
     }
 
-    /** Try multiple field name aliases; return first non-null numeric value found. */
-    private BigDecimal parseFee(JsonNode city, String... aliases) {
-        for (String alias : aliases) {
-            JsonNode node = city.path(alias);
-            if (!node.isMissingNode() && !node.isNull()) {
-                try {
-                    return new BigDecimal(node.asText().replace(",", ".").trim());
-                } catch (NumberFormatException ignored) {}
-            }
+    private BigDecimal parseFee(JsonNode city, String fieldName) {
+        JsonNode node = city.path(fieldName);
+        if (!node.isMissingNode() && !node.isNull()) {
+            try {
+                return new BigDecimal(node.asText().replace(",", ".").trim());
+            } catch (NumberFormatException ignored) {}
         }
         return null;
     }

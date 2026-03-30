@@ -28,8 +28,9 @@ public class DeliveryShipmentDto {
     private LocalDateTime deliveredAt;
     private LocalDateTime returnedAt;
     private String notes;
-    private BigDecimal deliveryFee;
-    private BigDecimal returnFee;
+    private BigDecimal deliveredPrice;
+    private BigDecimal returnedPrice;
+    private BigDecimal refusedPrice;
     private BigDecimal appliedFee;
     private String appliedFeeType;
     private List<TrackingEventDto> trackingHistory;

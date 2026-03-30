@@ -22,9 +22,10 @@ public class DeliveryChargesSummaryDto {
 
     // Charges
     private BigDecimal totalCharges;        // somme de tous les applied_fee
-    private BigDecimal deliveryCharges;     // frais pour les colis livrés
-    private BigDecimal returnCharges;       // frais pour les colis retournés
-    private BigDecimal cancellationCharges; // frais d'annulation
+    private BigDecimal deliveryCharges;     // frais livraison (DELIVERED-PRICE)
+    private BigDecimal returnCharges;       // frais retour (RETURNED-PRICE, souvent 0)
+    private BigDecimal refusedCharges;      // frais refus à la porte (REFUSED-PRICE)
+    private BigDecimal cancellationCharges; // frais annulation
 
     // Moyennes
     private BigDecimal avgDeliveryFee;

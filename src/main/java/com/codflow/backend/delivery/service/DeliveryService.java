@@ -87,8 +87,9 @@ public class DeliveryService {
         if (order.getDeliveryCityId() != null) {
             OzonCityDto city = ozonCityService.findById(order.getDeliveryCityId());
             if (city != null) {
-                shipment.setDeliveryFee(city.deliveryFee());
-                shipment.setReturnFee(city.returnFee());
+                shipment.setDeliveredPrice(city.deliveredPrice());
+                shipment.setReturnedPrice(city.returnedPrice());
+                shipment.setRefusedPrice(city.refusedPrice());
             }
         }
 
@@ -290,18 +291,22 @@ public class DeliveryService {
             case DELIVERED -> {
                 shipment.setDeliveredAt(now);
                 statusUpdate.setStatus(OrderStatus.LIVRE);
-                // Charge = frais livraison
-                shipment.setAppliedFee(shipment.getDeliveryFee());
+                shipment.setAppliedFee(shipment.getDeliveredPrice());
                 shipment.setAppliedFeeType("LIVRAISON");
             }
             case RETURNED -> {
                 shipment.setReturnedAt(now);
                 statusUpdate.setStatus(OrderStatus.RETOURNE);
-                // Charge = frais retour
-                shipment.setAppliedFee(shipment.getReturnFee());
+                // RETURNED-PRICE (souvent 0 MAD chez Ozon)
+                shipment.setAppliedFee(shipment.getReturnedPrice());
                 shipment.setAppliedFeeType("RETOUR");
             }
-            case FAILED_DELIVERY -> statusUpdate.setStatus(OrderStatus.ECHEC_LIVRAISON);
+            case FAILED_DELIVERY -> {
+                statusUpdate.setStatus(OrderStatus.ECHEC_LIVRAISON);
+                // Client a refusé à la porte → REFUSED-PRICE
+                shipment.setAppliedFee(shipment.getRefusedPrice());
+                shipment.setAppliedFeeType("REFUS");
+            }
             case CANCELLED -> {
                 shipment.setAppliedFee(java.math.BigDecimal.ZERO);
                 shipment.setAppliedFeeType("ANNULATION");
@@ -393,8 +398,9 @@ public class DeliveryService {
                 .deliveredAt(shipment.getDeliveredAt())
                 .returnedAt(shipment.getReturnedAt())
                 .notes(shipment.getNotes())
-                .deliveryFee(shipment.getDeliveryFee())
-                .returnFee(shipment.getReturnFee())
+                .deliveredPrice(shipment.getDeliveredPrice())
+                .returnedPrice(shipment.getReturnedPrice())
+                .refusedPrice(shipment.getRefusedPrice())
                 .appliedFee(shipment.getAppliedFee())
                 .appliedFeeType(shipment.getAppliedFeeType())
                 .trackingHistory(history)

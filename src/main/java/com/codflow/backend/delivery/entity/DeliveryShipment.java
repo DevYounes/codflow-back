@@ -64,19 +64,23 @@ public class DeliveryShipment extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
-    /** Tarif livraison de la ville (snapshot au moment de la création du colis) */
-    @Column(name = "delivery_fee", precision = 10, scale = 2)
-    private BigDecimal deliveryFee;
+    /** DELIVERED-PRICE snapshot au moment de la création du colis */
+    @Column(name = "delivered_price", precision = 10, scale = 2)
+    private BigDecimal deliveredPrice;
 
-    /** Tarif retour/refus de la ville */
-    @Column(name = "return_fee", precision = 10, scale = 2)
-    private BigDecimal returnFee;
+    /** RETURNED-PRICE snapshot (souvent 0) */
+    @Column(name = "returned_price", precision = 10, scale = 2)
+    private BigDecimal returnedPrice;
+
+    /** REFUSED-PRICE snapshot — client refuse à la porte */
+    @Column(name = "refused_price", precision = 10, scale = 2)
+    private BigDecimal refusedPrice;
 
     /** Frais réellement facturés selon le statut final */
     @Column(name = "applied_fee", precision = 10, scale = 2)
     private BigDecimal appliedFee;
 
-    /** 'LIVRAISON', 'RETOUR', ou 'ANNULATION' */
+    /** 'LIVRAISON', 'RETOUR', 'REFUS', ou 'ANNULATION' */
     @Column(name = "applied_fee_type", length = 20)
     private String appliedFeeType;
 
