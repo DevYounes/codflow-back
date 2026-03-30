@@ -12,6 +12,8 @@ import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.provider.DeliveryProviderAdapter;
 import com.codflow.backend.delivery.provider.DeliveryProviderRegistry;
 import com.codflow.backend.delivery.provider.dto.*;
+import com.codflow.backend.delivery.provider.ozon.OzonCityDto;
+import com.codflow.backend.delivery.provider.ozon.OzonCityService;
 import com.codflow.backend.delivery.repository.DeliveryProviderRepository;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.entity.Order;
@@ -43,6 +45,7 @@ public class DeliveryService {
     private final OrderRepository orderRepository;
     private final OrderService orderService;
     private final DeliveryProviderRegistry providerRegistry;
+    private final OzonCityService ozonCityService;
 
     @Transactional
     public DeliveryShipmentDto createShipment(CreateShipmentRequest request) {
@@ -79,6 +82,15 @@ public class DeliveryService {
         shipment.setOrder(order);
         shipment.setProvider(providerConfig);
         shipment.setNotes(request.getNotes());
+
+        // Snapshot city tariffs at creation time so charges are stable even if prices change later
+        if (order.getDeliveryCityId() != null) {
+            OzonCityDto city = ozonCityService.findById(order.getDeliveryCityId());
+            if (city != null) {
+                shipment.setDeliveryFee(city.deliveryFee());
+                shipment.setReturnFee(city.returnFee());
+            }
+        }
 
         if (response.isSuccess()) {
             shipment.setTrackingNumber(response.getTrackingNumber());
@@ -278,12 +290,22 @@ public class DeliveryService {
             case DELIVERED -> {
                 shipment.setDeliveredAt(now);
                 statusUpdate.setStatus(OrderStatus.LIVRE);
+                // Charge = frais livraison
+                shipment.setAppliedFee(shipment.getDeliveryFee());
+                shipment.setAppliedFeeType("LIVRAISON");
             }
             case RETURNED -> {
                 shipment.setReturnedAt(now);
                 statusUpdate.setStatus(OrderStatus.RETOURNE);
+                // Charge = frais retour
+                shipment.setAppliedFee(shipment.getReturnFee());
+                shipment.setAppliedFeeType("RETOUR");
             }
             case FAILED_DELIVERY -> statusUpdate.setStatus(OrderStatus.ECHEC_LIVRAISON);
+            case CANCELLED -> {
+                shipment.setAppliedFee(java.math.BigDecimal.ZERO);
+                shipment.setAppliedFeeType("ANNULATION");
+            }
             default -> { return; }
         }
 
@@ -371,6 +393,10 @@ public class DeliveryService {
                 .deliveredAt(shipment.getDeliveredAt())
                 .returnedAt(shipment.getReturnedAt())
                 .notes(shipment.getNotes())
+                .deliveryFee(shipment.getDeliveryFee())
+                .returnFee(shipment.getReturnFee())
+                .appliedFee(shipment.getAppliedFee())
+                .appliedFeeType(shipment.getAppliedFeeType())
                 .trackingHistory(history)
                 .createdAt(shipment.getCreatedAt())
                 .updatedAt(shipment.getUpdatedAt())

@@ -8,6 +8,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,12 +56,36 @@ public class OzonCityService {
                 String code = city.path("ID").asText(null);
                 String name = city.path("NAME").asText(null);
                 if (code != null && name != null) {
-                    cities.add(new OzonCityDto(code, name));
+                    BigDecimal deliveryFee = parseFee(city, "PRICE", "TARIF", "LIVRAISON");
+                    BigDecimal returnFee   = parseFee(city, "RETOUR", "PRICE_RETOUR", "RETOUR_TARIF");
+                    cities.add(new OzonCityDto(code, name, deliveryFee, returnFee));
                 }
             });
         }
 
         log.debug("Parsed {} cities from Ozon Express", cities.size());
         return cities;
+    }
+
+    /** Try multiple field name aliases; return first non-null numeric value found. */
+    private BigDecimal parseFee(JsonNode city, String... aliases) {
+        for (String alias : aliases) {
+            JsonNode node = city.path(alias);
+            if (!node.isMissingNode() && !node.isNull()) {
+                try {
+                    return new BigDecimal(node.asText().replace(",", ".").trim());
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+        return null;
+    }
+
+    /** Look up the tariff for a given Ozon city ID. Returns null if not found or not cached yet. */
+    public OzonCityDto findById(String cityId) {
+        if (cityId == null) return null;
+        return getCities().stream()
+                .filter(c -> cityId.equals(c.code()))
+                .findFirst()
+                .orElse(null);
     }
 }

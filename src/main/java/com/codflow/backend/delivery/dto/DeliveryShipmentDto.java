@@ -4,6 +4,7 @@ import com.codflow.backend.delivery.enums.ShipmentStatus;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -27,6 +28,10 @@ public class DeliveryShipmentDto {
     private LocalDateTime deliveredAt;
     private LocalDateTime returnedAt;
     private String notes;
+    private BigDecimal deliveryFee;
+    private BigDecimal returnFee;
+    private BigDecimal appliedFee;
+    private String appliedFeeType;
     private List<TrackingEventDto> trackingHistory;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -1,0 +1,133 @@
+package com.codflow.backend.charges.service;
+
+import com.codflow.backend.charges.dto.DeliveryChargesSummaryDto;
+import com.codflow.backend.charges.dto.ShipmentChargeDto;
+import com.codflow.backend.delivery.entity.DeliveryShipment;
+import com.codflow.backend.delivery.enums.ShipmentStatus;
+import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class ChargesService {
+
+    private final DeliveryShipmentRepository shipmentRepository;
+
+    @Transactional(readOnly = true)
+    public DeliveryChargesSummaryDto getDeliverySummary(LocalDate from, LocalDate to) {
+        LocalDateTime fromDt = from != null ? from.atStartOfDay()         : null;
+        LocalDateTime toDt   = to   != null ? to.plusDays(1).atStartOfDay() : null;
+
+        List<DeliveryShipment> shipments = shipmentRepository.findAll(
+                buildSpec(fromDt, toDt));
+
+        long delivered   = count(shipments, ShipmentStatus.DELIVERED);
+        long returned    = count(shipments, ShipmentStatus.RETURNED);
+        long cancelled   = count(shipments, ShipmentStatus.CANCELLED);
+        long pending     = shipments.size() - delivered - returned - cancelled;
+
+        BigDecimal deliveryCharges     = sum(shipments, "LIVRAISON");
+        BigDecimal returnCharges       = sum(shipments, "RETOUR");
+        BigDecimal cancellationCharges = sum(shipments, "ANNULATION");
+        BigDecimal totalCharges        = deliveryCharges.add(returnCharges).add(cancellationCharges);
+
+        BigDecimal avgDeliveryFee = avg(shipments.stream()
+                .map(DeliveryShipment::getDeliveryFee)
+                .filter(f -> f != null && f.compareTo(BigDecimal.ZERO) > 0)
+                .toList());
+
+        BigDecimal avgReturnFee = avg(shipments.stream()
+                .map(DeliveryShipment::getReturnFee)
+                .filter(f -> f != null && f.compareTo(BigDecimal.ZERO) > 0)
+                .toList());
+
+        return DeliveryChargesSummaryDto.builder()
+                .from(from)
+                .to(to)
+                .totalShipments(shipments.size())
+                .delivered(delivered)
+                .returned(returned)
+                .cancelled(cancelled)
+                .pending(pending)
+                .totalCharges(totalCharges)
+                .deliveryCharges(deliveryCharges)
+                .returnCharges(returnCharges)
+                .cancellationCharges(cancellationCharges)
+                .avgDeliveryFee(avgDeliveryFee)
+                .avgReturnFee(avgReturnFee)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ShipmentChargeDto> getDeliveryDetails(LocalDate from, LocalDate to,
+                                                       String feeType, Pageable pageable) {
+        LocalDateTime fromDt = from != null ? from.atStartOfDay()         : null;
+        LocalDateTime toDt   = to   != null ? to.plusDays(1).atStartOfDay() : null;
+
+        Specification<DeliveryShipment> spec = buildSpec(fromDt, toDt);
+        if (feeType != null && !feeType.isBlank()) {
+            spec = spec.and((root, q, cb) ->
+                    cb.equal(root.get("appliedFeeType"), feeType.toUpperCase()));
+        }
+
+        return shipmentRepository.findAll(spec, pageable).map(this::toChargeDto);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private Specification<DeliveryShipment> buildSpec(LocalDateTime from, LocalDateTime to) {
+        return (root, query, cb) -> {
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            if (from != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), from));
+            if (to   != null) predicates.add(cb.lessThan(root.get("createdAt"), to));
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+    }
+
+    private long count(List<DeliveryShipment> list, ShipmentStatus status) {
+        return list.stream().filter(s -> s.getStatus() == status).count();
+    }
+
+    private BigDecimal sum(List<DeliveryShipment> list, String feeType) {
+        return list.stream()
+                .filter(s -> feeType.equals(s.getAppliedFeeType()) && s.getAppliedFee() != null)
+                .map(DeliveryShipment::getAppliedFee)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal avg(List<BigDecimal> values) {
+        if (values.isEmpty()) return BigDecimal.ZERO;
+        BigDecimal sum = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(BigDecimal.valueOf(values.size()), 2, RoundingMode.HALF_UP);
+    }
+
+    private ShipmentChargeDto toChargeDto(DeliveryShipment s) {
+        LocalDateTime finalizedAt = s.getDeliveredAt() != null ? s.getDeliveredAt() : s.getReturnedAt();
+        return ShipmentChargeDto.builder()
+                .shipmentId(s.getId())
+                .orderNumber(s.getOrder().getOrderNumber())
+                .customerName(s.getOrder().getCustomerName())
+                .trackingNumber(s.getTrackingNumber())
+                .shipmentStatus(s.getStatus().name())
+                .deliveryFee(s.getDeliveryFee())
+                .returnFee(s.getReturnFee())
+                .appliedFee(s.getAppliedFee())
+                .appliedFeeType(s.getAppliedFeeType())
+                .finalizedAt(finalizedAt)
+                .createdAt(s.getCreatedAt())
+                .build();
+    }
+}
