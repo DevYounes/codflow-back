@@ -2,6 +2,9 @@ package com.codflow.backend.analytics.controller;
 
 import com.codflow.backend.analytics.dto.*;
 import com.codflow.backend.analytics.service.AnalyticsService;
+import com.codflow.backend.charges.dto.DailyChargesDto;
+import com.codflow.backend.charges.dto.DeliveryChargesSummaryDto;
+import com.codflow.backend.charges.service.ChargesService;
 import com.codflow.backend.common.dto.ApiResponse;
 import com.codflow.backend.security.UserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +27,7 @@ import java.util.List;
 public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
+    private final ChargesService chargesService;
 
     @GetMapping("/my-dashboard")
     @PreAuthorize("hasRole('AGENT')")
@@ -64,5 +68,22 @@ public class AnalyticsController {
     public ResponseEntity<ApiResponse<List<DailyStatsDto>>> getDailyTrend(
             @RequestParam(defaultValue = "30") int days) {
         return ResponseEntity.ok(ApiResponse.success(analyticsService.getDailyTrend(days)));
+    }
+
+    @GetMapping("/charges")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Résumé des charges de livraison")
+    public ResponseEntity<ApiResponse<DeliveryChargesSummaryDto>> getCharges(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success(chargesService.getDeliverySummary(from, to)));
+    }
+
+    @GetMapping("/charges/daily")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Charges de livraison journalières")
+    public ResponseEntity<ApiResponse<List<DailyChargesDto>>> getChargesDaily(
+            @RequestParam(defaultValue = "30") int days) {
+        return ResponseEntity.ok(ApiResponse.success(chargesService.getChargesDaily(days)));
     }
 }

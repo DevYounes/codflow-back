@@ -1,5 +1,6 @@
 package com.codflow.backend.charges.service;
 
+import com.codflow.backend.charges.dto.DailyChargesDto;
 import com.codflow.backend.charges.dto.DeliveryChargesSummaryDto;
 import com.codflow.backend.charges.dto.ShipmentChargeDto;
 import com.codflow.backend.delivery.entity.DeliveryShipment;
@@ -16,7 +17,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -86,6 +89,38 @@ public class ChargesService {
         }
 
         return shipmentRepository.findAll(spec, pageable).map(this::toChargeDto);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DailyChargesDto> getChargesDaily(int days) {
+        LocalDateTime fromDt = LocalDate.now().minusDays(days - 1L).atStartOfDay();
+        LocalDateTime toDt   = LocalDate.now().plusDays(1).atStartOfDay();
+
+        List<DeliveryShipment> shipments = shipmentRepository.findAll(buildSpec(fromDt, toDt));
+
+        return shipments.stream()
+                .collect(Collectors.groupingBy(s -> s.getCreatedAt().toLocalDate()))
+                .entrySet().stream()
+                .sorted(Comparator.comparing(e -> e.getKey()))
+                .map(e -> {
+                    LocalDate date = e.getKey();
+                    List<DeliveryShipment> daily = e.getValue();
+                    BigDecimal delivery     = sum(daily, "LIVRAISON");
+                    BigDecimal ret          = sum(daily, "RETOUR");
+                    BigDecimal refused      = sum(daily, "REFUS");
+                    BigDecimal cancellation = sum(daily, "ANNULATION");
+                    BigDecimal total = delivery.add(ret).add(refused).add(cancellation);
+                    return DailyChargesDto.builder()
+                            .date(date.toString())
+                            .totalCharges(total)
+                            .deliveryCharges(delivery)
+                            .returnCharges(ret)
+                            .refusedCharges(refused)
+                            .cancellationCharges(cancellation)
+                            .shipmentCount(daily.size())
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
     // -------------------------------------------------------------------------
