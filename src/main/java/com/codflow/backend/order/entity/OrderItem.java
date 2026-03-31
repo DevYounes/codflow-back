@@ -51,6 +51,10 @@ public class OrderItem {
     @Column(name = "total_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalPrice = BigDecimal.ZERO;
 
+    /** Snapshot du coût de revient au moment de la confirmation */
+    @Column(name = "unit_cost", precision = 10, scale = 2)
+    private BigDecimal unitCost;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

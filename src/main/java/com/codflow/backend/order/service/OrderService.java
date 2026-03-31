@@ -156,6 +156,8 @@ public class OrderService {
                 deductStockForOrder(order);
                 order.setStockDeducted(true);
             }
+            // Snapshot du coût de revient au moment de la confirmation
+            snapshotUnitCosts(order);
         }
 
         if (newStatus.isCancelled() && order.getCancelledAt() == null) {
@@ -360,6 +362,24 @@ public class OrderService {
                     log.warn("Could not deduct stock for product {} in order {}: {}",
                             item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
                 }
+            }
+        });
+    }
+
+    private void snapshotUnitCosts(Order order) {
+        order.getItems().forEach(item -> {
+            if (item.getUnitCost() != null) return; // already snapshotted
+            try {
+                java.math.BigDecimal cost = null;
+                if (item.getVariant() != null && item.getVariant().getCostPrice() != null) {
+                    cost = item.getVariant().getCostPrice();
+                } else if (item.getProduct() != null && item.getProduct().getCostPrice() != null) {
+                    cost = item.getProduct().getCostPrice();
+                }
+                if (cost != null) item.setUnitCost(cost);
+            } catch (Exception e) {
+                log.warn("Could not snapshot unit cost for item {} in order {}: {}",
+                        item.getProductSku(), order.getOrderNumber(), e.getMessage());
             }
         });
     }

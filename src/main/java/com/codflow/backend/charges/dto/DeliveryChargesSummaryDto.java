@@ -30,4 +30,9 @@ public class DeliveryChargesSummaryDto {
     // Moyennes
     private BigDecimal avgDeliveryFee;
     private BigDecimal avgReturnFee;
+
+    // Coût des produits (sur commandes livrées)
+    private BigDecimal productCosts;     // somme des coûts de revient des articles livrés
+    private BigDecimal revenue;          // CA = somme des montants COD des commandes livrées
+    private BigDecimal netProfit;        // Gain net = revenue - totalCharges - productCosts
 }

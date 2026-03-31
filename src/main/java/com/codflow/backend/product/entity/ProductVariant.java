@@ -38,6 +38,12 @@ public class ProductVariant extends BaseEntity {
     @Column(name = "price_override", precision = 10, scale = 2)
     private BigDecimal priceOverride;
 
+    /**
+     * Coût de revient override. If null, inherits product costPrice.
+     */
+    @Column(name = "cost_price", precision = 10, scale = 2)
+    private BigDecimal costPrice;
+
     @Column(name = "current_stock", nullable = false)
     private int currentStock = 0;
 

@@ -58,6 +58,24 @@ public class ChargesService {
                 .filter(f -> f != null && f.compareTo(BigDecimal.ZERO) > 0)
                 .toList());
 
+        // Coûts produits + CA sur les commandes livrées
+        List<DeliveryShipment> deliveredShipments = shipments.stream()
+                .filter(s -> s.getStatus() == ShipmentStatus.DELIVERED)
+                .toList();
+
+        BigDecimal productCosts = deliveredShipments.stream()
+                .map(s -> s.getOrder().getItems().stream()
+                        .filter(item -> item.getUnitCost() != null)
+                        .map(item -> item.getUnitCost().multiply(BigDecimal.valueOf(item.getQuantity())))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal revenue = deliveredShipments.stream()
+                .map(s -> s.getOrder().getTotalAmount() != null ? s.getOrder().getTotalAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal netProfit = revenue.subtract(totalCharges).subtract(productCosts);
+
         return DeliveryChargesSummaryDto.builder()
                 .from(from)
                 .to(to)
@@ -73,6 +91,9 @@ public class ChargesService {
                 .cancellationCharges(cancellationCharges)
                 .avgDeliveryFee(avgDeliveryFee)
                 .avgReturnFee(avgReturnFee)
+                .productCosts(productCosts)
+                .revenue(revenue)
+                .netProfit(netProfit)
                 .build();
     }
 

@@ -23,6 +23,9 @@ public class CreateProductRequest {
     @DecimalMin(value = "0.0", inclusive = true)
     private BigDecimal price;
 
+    @DecimalMin(value = "0.0", inclusive = true)
+    private BigDecimal costPrice;
+
     private String imageUrl;
 
     @Min(0)

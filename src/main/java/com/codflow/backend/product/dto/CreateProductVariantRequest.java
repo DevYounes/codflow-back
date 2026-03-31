@@ -12,5 +12,6 @@ public class CreateProductVariantRequest {
     private String size;
     private String variantSku;
     private BigDecimal priceOverride;
+    private BigDecimal costPrice;
     private int currentStock = 0;
 }

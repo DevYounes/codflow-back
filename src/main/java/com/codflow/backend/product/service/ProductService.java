@@ -43,6 +43,7 @@ public class ProductService {
         product.setName(request.getName());
         product.setDescription(request.getDescription());
         product.setPrice(request.getPrice());
+        product.setCostPrice(request.getCostPrice());
         product.setImageUrl(request.getImageUrl());
         product.setCurrentStock(request.getInitialStock());
         product.setMinThreshold(request.getMinThreshold());
@@ -72,6 +73,7 @@ public class ProductService {
         if (StringUtils.hasText(request.getName())) product.setName(request.getName());
         if (request.getDescription() != null) product.setDescription(request.getDescription());
         if (request.getPrice() != null) product.setPrice(request.getPrice());
+        if (request.getCostPrice() != null) product.setCostPrice(request.getCostPrice());
         if (request.getImageUrl() != null) product.setImageUrl(request.getImageUrl());
         product.setMinThreshold(request.getMinThreshold());
         product.setAlertEnabled(request.isAlertEnabled());
@@ -118,6 +120,7 @@ public class ProductService {
         variant.setSize(request.getSize());
         variant.setVariantSku(request.getVariantSku());
         variant.setPriceOverride(request.getPriceOverride());
+        variant.setCostPrice(request.getCostPrice());
         variant.setCurrentStock(request.getCurrentStock());
         return toVariantDto(productVariantRepository.save(variant));
     }
@@ -148,6 +151,7 @@ public class ProductService {
                 .name(product.getName())
                 .description(product.getDescription())
                 .price(product.getPrice())
+                .costPrice(product.getCostPrice())
                 .imageUrl(product.getImageUrl())
                 .active(product.isActive())
                 .currentStock(product.getCurrentStock())
@@ -169,6 +173,7 @@ public class ProductService {
                 .size(v.getSize())
                 .variantSku(v.getVariantSku())
                 .priceOverride(v.getPriceOverride())
+                .costPrice(v.getCostPrice())
                 .currentStock(v.getCurrentStock())
                 .active(v.isActive())
                 .createdAt(v.getCreatedAt())

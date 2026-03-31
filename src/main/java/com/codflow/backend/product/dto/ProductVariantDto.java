@@ -15,6 +15,7 @@ public class ProductVariantDto {
     private String size;
     private String variantSku;
     private BigDecimal priceOverride;
+    private BigDecimal costPrice;
     private int currentStock;
     private boolean active;
     private LocalDateTime createdAt;

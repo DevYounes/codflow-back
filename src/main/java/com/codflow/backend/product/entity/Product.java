@@ -27,6 +27,10 @@ public class Product extends BaseEntity {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price = BigDecimal.ZERO;
 
+    /** Coût de revient (prix d'achat) */
+    @Column(name = "cost_price", precision = 10, scale = 2)
+    private BigDecimal costPrice;
+
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 
