@@ -93,6 +93,17 @@ public class DeliveryController {
         return ResponseEntity.ok(ApiResponse.success("Suivi mis à jour", deliveryService.syncTracking(id)));
     }
 
+    @PostMapping("/shipments/repair-fees")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Réparer les frais de livraison manquants",
+        description = "Re-fetche les tarifs Ozon et backfille delivered_price/applied_fee pour les colis sans prix."
+    )
+    public ResponseEntity<ApiResponse<String>> repairShipmentFees() {
+        int count = deliveryService.repairShipmentFees();
+        return ResponseEntity.ok(ApiResponse.success(count + " colis réparés"));
+    }
+
     @GetMapping("/providers")
     @Operation(summary = "Lister les transporteurs disponibles")
     public ResponseEntity<ApiResponse<List<DeliveryProviderConfig>>> getProviders() {

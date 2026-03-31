@@ -322,6 +322,53 @@ public class DeliveryService {
         }
     }
 
+    /**
+     * Backfille les prix Ozon (delivered/returned/refused) et applied_fee
+     * pour les colis dont les tarifs sont NULL (créés avant la feature de snapshot).
+     * Utilise les tarifs actuels de l'API Ozon — approx. pour l'historique.
+     */
+    @Transactional
+    public int repairShipmentFees() {
+        List<DeliveryShipment> toRepair = shipmentRepository.findAll().stream()
+                .filter(s -> s.getDeliveredPrice() == null || s.getAppliedFeeType() == null)
+                .toList();
+
+        int repaired = 0;
+        for (DeliveryShipment s : toRepair) {
+            String cityId = s.getOrder().getDeliveryCityId();
+            if (cityId != null) {
+                OzonCityDto city = ozonCityService.findById(cityId);
+                if (city != null) {
+                    s.setDeliveredPrice(city.deliveredPrice());
+                    s.setReturnedPrice(city.returnedPrice());
+                    s.setRefusedPrice(city.refusedPrice());
+                }
+            }
+            // Recalcule applied_fee selon le statut
+            if (s.getAppliedFeeType() == null) {
+                switch (s.getStatus()) {
+                    case DELIVERED      -> { s.setAppliedFee(s.getDeliveredPrice()); s.setAppliedFeeType("LIVRAISON"); }
+                    case RETURNED       -> { s.setAppliedFee(s.getReturnedPrice());  s.setAppliedFeeType("RETOUR"); }
+                    case FAILED_DELIVERY -> { s.setAppliedFee(s.getRefusedPrice());  s.setAppliedFeeType("REFUS"); }
+                    case CANCELLED      -> { s.setAppliedFee(java.math.BigDecimal.ZERO); s.setAppliedFeeType("ANNULATION"); }
+                    default -> {}
+                }
+            } else if (s.getAppliedFee() == null || s.getAppliedFee().compareTo(java.math.BigDecimal.ZERO) == 0) {
+                // appliedFeeType déjà set par V12 mais appliedFee était 0 car prix null
+                switch (s.getAppliedFeeType()) {
+                    case "LIVRAISON" -> s.setAppliedFee(s.getDeliveredPrice());
+                    case "RETOUR"    -> s.setAppliedFee(s.getReturnedPrice());
+                    case "REFUS"     -> s.setAppliedFee(s.getRefusedPrice());
+                    default -> {}
+                }
+            }
+            shipmentRepository.save(s);
+            repaired++;
+        }
+        log.info("repairShipmentFees: {} colis réparés", repaired);
+        return repaired;
+    }
+
     private ShipmentStatus mapProviderStatus(String providerStatus) {
         if (providerStatus == null) return null;
         return switch (providerStatus.toLowerCase()) {
