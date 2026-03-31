@@ -142,9 +142,28 @@ public class ChargesService {
 
     private BigDecimal sum(List<DeliveryShipment> list, String feeType) {
         return list.stream()
-                .filter(s -> feeType.equals(s.getAppliedFeeType()) && s.getAppliedFee() != null)
-                .map(DeliveryShipment::getAppliedFee)
+                .map(s -> resolveAppliedFee(s, feeType))
+                .filter(f -> f != null && f.compareTo(BigDecimal.ZERO) != 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Returns the applied fee for the given feeType.
+     * If appliedFeeType is already set (new shipments), use appliedFee directly.
+     * If not set yet (shipments created before charges feature), derive from status + price snapshot.
+     */
+    private BigDecimal resolveAppliedFee(DeliveryShipment s, String feeType) {
+        if (s.getAppliedFeeType() != null) {
+            return feeType.equals(s.getAppliedFeeType()) ? s.getAppliedFee() : null;
+        }
+        // Fallback for shipments without appliedFeeType (created before charges feature)
+        return switch (feeType) {
+            case "LIVRAISON"  -> s.getStatus() == ShipmentStatus.DELIVERED     ? s.getDeliveredPrice() : null;
+            case "RETOUR"     -> s.getStatus() == ShipmentStatus.RETURNED       ? s.getReturnedPrice()  : null;
+            case "REFUS"      -> s.getStatus() == ShipmentStatus.FAILED_DELIVERY ? s.getRefusedPrice()  : null;
+            case "ANNULATION" -> s.getStatus() == ShipmentStatus.CANCELLED      ? BigDecimal.ZERO       : null;
+            default           -> null;
+        };
     }
 
     private BigDecimal avg(List<BigDecimal> values) {
