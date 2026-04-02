@@ -2,8 +2,10 @@ package com.codflow.backend.analytics.controller;
 
 import com.codflow.backend.analytics.dto.*;
 import com.codflow.backend.analytics.service.AnalyticsService;
+import com.codflow.backend.charges.dto.BusinessProfitSummaryDto;
 import com.codflow.backend.charges.dto.DailyChargesDto;
 import com.codflow.backend.charges.dto.DeliveryChargesSummaryDto;
+import com.codflow.backend.charges.service.BusinessChargesService;
 import com.codflow.backend.charges.service.ChargesService;
 import com.codflow.backend.common.dto.ApiResponse;
 import com.codflow.backend.security.UserPrincipal;
@@ -28,6 +30,7 @@ public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
     private final ChargesService chargesService;
+    private final BusinessChargesService businessChargesService;
 
     @GetMapping("/my-dashboard")
     @PreAuthorize("hasRole('AGENT')")
@@ -85,5 +88,14 @@ public class AnalyticsController {
     public ResponseEntity<ApiResponse<List<DailyChargesDto>>> getChargesDaily(
             @RequestParam(defaultValue = "30") int days) {
         return ResponseEntity.ok(ApiResponse.success(chargesService.getChargesDaily(days)));
+    }
+
+    @GetMapping("/profit")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Récapitulatif complet du profit COD (CA, marges, charges opé, gain net)")
+    public ResponseEntity<ApiResponse<BusinessProfitSummaryDto>> getProfit(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success(businessChargesService.getProfitSummary(from, to)));
     }
 }
