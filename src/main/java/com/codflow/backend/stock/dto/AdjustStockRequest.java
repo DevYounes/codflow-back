@@ -13,6 +13,9 @@ public class AdjustStockRequest {
     @NotNull
     private Long productId;
 
+    /** Optionnel — si renseigné, met à jour le stock de cette variante spécifique */
+    private Long variantId;
+
     @NotNull
     private MovementType movementType;
 

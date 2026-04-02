@@ -4,7 +4,9 @@ import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.product.entity.Product;
+import com.codflow.backend.product.entity.ProductVariant;
 import com.codflow.backend.product.repository.ProductRepository;
+import com.codflow.backend.product.repository.ProductVariantRepository;
 import com.codflow.backend.security.UserPrincipal;
 import com.codflow.backend.stock.dto.AdjustStockRequest;
 import com.codflow.backend.stock.dto.StockAlertDto;
@@ -34,6 +36,7 @@ import java.util.List;
 public class StockService {
 
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final StockMovementRepository stockMovementRepository;
     private final StockAlertRepository stockAlertRepository;
     private final UserRepository userRepository;
@@ -43,24 +46,56 @@ public class StockService {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", request.getProductId()));
 
-        int previousStock = product.getCurrentStock();
-        int newStock;
-
-        if (request.getMovementType() == MovementType.IN || request.getMovementType() == MovementType.RETURN) {
-            newStock = previousStock + request.getQuantity();
-        } else if (request.getMovementType() == MovementType.OUT) {
-            if (previousStock < request.getQuantity()) {
-                throw new BusinessException("Stock insuffisant. Stock actuel: " + previousStock);
+        // --- Variant-level adjustment ---
+        if (request.getVariantId() != null) {
+            ProductVariant variant = variantRepository.findById(request.getVariantId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Variante", request.getVariantId()));
+            if (!variant.getProduct().getId().equals(product.getId())) {
+                throw new BusinessException("La variante n'appartient pas à ce produit");
             }
-            newStock = previousStock - request.getQuantity();
-        } else {
-            // ADJUSTMENT - can be positive or negative value
-            newStock = request.getQuantity();
+
+            int prevVariant = variant.getCurrentStock();
+            int newVariant = computeNewStock(prevVariant, request);
+            variantRepository.updateCurrentStock(variant.getId(), newVariant);
+
+            // Also update product aggregate
+            int diff = newVariant - prevVariant;
+            int newProductStock = Math.max(0, product.getCurrentStock() + diff);
+            productRepository.updateCurrentStock(product.getId(), newProductStock);
+            product.setCurrentStock(newProductStock);
+
+            StockMovement movement = buildMovement(product, request, prevVariant, newVariant, principal);
+            stockMovementRepository.save(movement);
+            checkAndCreateAlerts(product);
+            return toMovementDto(movement);
         }
 
+        // --- Product-level adjustment (no variant) ---
+        int previousStock = product.getCurrentStock();
+        int newStock = computeNewStock(previousStock, request);
         productRepository.updateCurrentStock(product.getId(), newStock);
-        product.setCurrentStock(newStock); // keep in-memory state consistent for alert check
+        product.setCurrentStock(newStock);
 
+        StockMovement movement = buildMovement(product, request, previousStock, newStock, principal);
+        stockMovementRepository.save(movement);
+        checkAndCreateAlerts(product);
+        return toMovementDto(movement);
+    }
+
+    private int computeNewStock(int current, AdjustStockRequest request) {
+        return switch (request.getMovementType()) {
+            case IN, RETURN -> current + request.getQuantity();
+            case OUT -> {
+                if (current < request.getQuantity())
+                    throw new BusinessException("Stock insuffisant. Stock actuel: " + current);
+                yield current - request.getQuantity();
+            }
+            default -> request.getQuantity(); // ADJUSTMENT = set absolute value
+        };
+    }
+
+    private StockMovement buildMovement(Product product, AdjustStockRequest request,
+                                         int previousStock, int newStock, UserPrincipal principal) {
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
         movement.setMovementType(request.getMovementType());
@@ -68,15 +103,10 @@ public class StockService {
         movement.setPreviousStock(previousStock);
         movement.setNewStock(newStock);
         movement.setReason(request.getReason());
-
         if (principal != null) {
             userRepository.findById(principal.getId()).ifPresent(movement::setCreatedBy);
         }
-
-        stockMovementRepository.save(movement);
-        checkAndCreateAlerts(product);
-
-        return toMovementDto(movement);
+        return movement;
     }
 
     @Transactional
