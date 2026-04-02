@@ -7,7 +7,9 @@ import com.codflow.backend.order.dto.CreateOrderRequest;
 import com.codflow.backend.order.enums.OrderSource;
 import com.codflow.backend.order.repository.OrderRepository;
 import com.codflow.backend.order.service.OrderService;
+import com.codflow.backend.product.entity.ProductVariant;
 import com.codflow.backend.product.repository.ProductRepository;
+import com.codflow.backend.product.repository.ProductVariantRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -47,12 +49,13 @@ public class ShopifyImportService {
     private static final String SHOPIFY_API_VERSION = "2024-01";
     private static final int    PAGE_LIMIT          = 250;
 
-    private final SystemSettingService settingService;
-    private final OrderService         orderService;
-    private final OrderRepository      orderRepository;
-    private final ProductRepository    productRepository;
-    private final WebClient.Builder    webClientBuilder;
-    private final ObjectMapper         objectMapper;
+    private final SystemSettingService    settingService;
+    private final OrderService            orderService;
+    private final OrderRepository         orderRepository;
+    private final ProductRepository       productRepository;
+    private final ProductVariantRepository variantRepository;
+    private final WebClient.Builder       webClientBuilder;
+    private final ObjectMapper            objectMapper;
 
     /**
      * Scheduled sync — runs every 5 minutes by default.
@@ -377,7 +380,17 @@ public class ShopifyImportService {
             String sku = li.path("sku").asText(null);
             if (!blank(sku)) {
                 item.setProductSku(sku);
-                productRepository.findBySku(sku).ifPresent(p -> item.setProductId(p.getId()));
+                // 1. Essayer SKU produit exact
+                var product = productRepository.findBySku(sku);
+                if (product.isPresent()) {
+                    item.setProductId(product.get().getId());
+                } else {
+                    // 2. Essayer SKU variante (ex: "VM-42" → variante pointure 42 du produit VM)
+                    variantRepository.findByVariantSku(sku).ifPresent(v -> {
+                        item.setProductId(v.getProduct().getId());
+                        item.setVariantId(v.getId());
+                    });
+                }
             }
 
             items.add(item);
