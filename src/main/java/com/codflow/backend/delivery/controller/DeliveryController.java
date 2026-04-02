@@ -139,7 +139,7 @@ public class DeliveryController {
     // =========================================================================
 
     @PostMapping("/notes")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(
         summary = "Créer un bon de livraison (BL)",
         description = """
@@ -162,7 +162,7 @@ public class DeliveryController {
     }
 
     @GetMapping("/notes")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Lister les bons de livraison")
     public ResponseEntity<ApiResponse<Page<DeliveryNoteDto>>> listDeliveryNotes(
             @RequestParam(defaultValue = "0")    int page,
@@ -176,14 +176,14 @@ public class DeliveryController {
     }
 
     @GetMapping("/notes/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Obtenir un bon de livraison par ID")
     public ResponseEntity<ApiResponse<DeliveryNoteDto>> getDeliveryNote(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(deliveryNoteService.getNote(id)));
     }
 
     @GetMapping("/notes/ref/{ref}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Obtenir un bon de livraison par référence BL")
     public ResponseEntity<ApiResponse<DeliveryNoteDto>> getDeliveryNoteByRef(@PathVariable String ref) {
         return ResponseEntity.ok(ApiResponse.success(deliveryNoteService.getNoteByRef(ref)));
