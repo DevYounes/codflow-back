@@ -124,8 +124,13 @@ public class BusinessChargesService {
 
         BigDecimal productCosts = deliveredShipments.stream()
                 .map(s -> s.getOrder().getItems().stream()
-                        .filter(i -> i.getUnitCost() != null)
-                        .map(i -> i.getUnitCost().multiply(BigDecimal.valueOf(i.getQuantity())))
+                        .map(i -> {
+                            BigDecimal cost = i.getUnitCost();
+                            // Fallback: si unitCost pas snapshoté, utiliser le costPrice actuel du produit/variante
+                            if (cost == null && i.getVariant() != null) cost = i.getVariant().getCostPrice();
+                            if (cost == null && i.getProduct() != null) cost = i.getProduct().getCostPrice();
+                            return cost != null ? cost.multiply(BigDecimal.valueOf(i.getQuantity())) : BigDecimal.ZERO;
+                        })
                         .reduce(BigDecimal.ZERO, BigDecimal::add))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 

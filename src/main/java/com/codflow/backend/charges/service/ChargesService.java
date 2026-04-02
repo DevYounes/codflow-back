@@ -65,8 +65,12 @@ public class ChargesService {
 
         BigDecimal productCosts = deliveredShipments.stream()
                 .map(s -> s.getOrder().getItems().stream()
-                        .filter(item -> item.getUnitCost() != null)
-                        .map(item -> item.getUnitCost().multiply(BigDecimal.valueOf(item.getQuantity())))
+                        .map(item -> {
+                            BigDecimal cost = item.getUnitCost();
+                            if (cost == null && item.getVariant() != null) cost = item.getVariant().getCostPrice();
+                            if (cost == null && item.getProduct() != null) cost = item.getProduct().getCostPrice();
+                            return cost != null ? cost.multiply(BigDecimal.valueOf(item.getQuantity())) : BigDecimal.ZERO;
+                        })
                         .reduce(BigDecimal.ZERO, BigDecimal::add))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
