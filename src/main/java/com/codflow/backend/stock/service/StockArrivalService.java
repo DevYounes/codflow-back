@@ -74,10 +74,11 @@ public class StockArrivalService {
                 }
                 item.setVariant(variant);
 
-                // Mise à jour du stock variante
+                // Mise à jour du stock variante (direct UPDATE pour éviter les problèmes de flush JPA)
                 if (itemReq.getQuantity() > 0) {
-                    variant.setCurrentStock(variant.getCurrentStock() + itemReq.getQuantity());
-                    variantRepository.save(variant);
+                    int newVariantStock = variant.getCurrentStock() + itemReq.getQuantity();
+                    variantRepository.updateCurrentStock(variant.getId(), newVariantStock);
+                    variant.setCurrentStock(newVariantStock);
                 }
             }
 
@@ -88,8 +89,9 @@ public class StockArrivalService {
         int totalQty = request.getItems().stream().mapToInt(i -> i.getQuantity() != null ? i.getQuantity() : 0).sum();
         if (totalQty > 0) {
             int previousStock = product.getCurrentStock();
-            product.setCurrentStock(previousStock + totalQty);
-            productRepository.save(product);
+            int newProductStock = previousStock + totalQty;
+            productRepository.updateCurrentStock(product.getId(), newProductStock);
+            product.setCurrentStock(newProductStock);
 
             StockMovement movement = new StockMovement();
             movement.setProduct(product);

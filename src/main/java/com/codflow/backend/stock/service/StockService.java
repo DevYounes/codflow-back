@@ -58,8 +58,8 @@ public class StockService {
             newStock = request.getQuantity();
         }
 
-        product.setCurrentStock(newStock);
-        productRepository.save(product);
+        productRepository.updateCurrentStock(product.getId(), newStock);
+        product.setCurrentStock(newStock); // keep in-memory state consistent for alert check
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
@@ -87,8 +87,8 @@ public class StockService {
         int previousStock = product.getCurrentStock();
         int newStock = Math.max(0, previousStock - quantity);
 
+        productRepository.updateCurrentStock(product.getId(), newStock);
         product.setCurrentStock(newStock);
-        productRepository.save(product);
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
@@ -112,8 +112,8 @@ public class StockService {
         int previousStock = product.getCurrentStock();
         int newStock = previousStock + quantity;
 
+        productRepository.updateCurrentStock(product.getId(), newStock);
         product.setCurrentStock(newStock);
-        productRepository.save(product);
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
