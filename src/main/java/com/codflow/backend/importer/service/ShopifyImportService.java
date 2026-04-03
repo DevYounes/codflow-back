@@ -318,10 +318,10 @@ public class ShopifyImportService {
         JsonNode shipping = order.path("shipping_address");
         JsonNode customer = order.path("customer");
 
-        String firstName = shipping.path("first_name").asText(
-                customer.path("first_name").asText(""));
-        String lastName  = shipping.path("last_name").asText(
-                customer.path("last_name").asText(""));
+        String firstName = cleanName(shipping.path("first_name").asText(
+                customer.path("first_name").asText("")));
+        String lastName  = cleanName(shipping.path("last_name").asText(
+                customer.path("last_name").asText("")));
         String fullName  = (firstName + " " + lastName).trim();
         if (fullName.isEmpty()) fullName = order.path("email").asText("Client Shopify");
         req.setCustomerName(fullName);
@@ -415,5 +415,11 @@ public class ShopifyImportService {
 
     private boolean blank(String s) {
         return s == null || s.isBlank();
+    }
+
+    /** Supprime les tirets et espaces parasites en début/fin de nom (ex: "- Ahmed" → "Ahmed"). */
+    private String cleanName(String s) {
+        if (s == null) return "";
+        return s.replaceAll("^[\\s\\-]+|[\\s\\-]+$", "").replaceAll("\\s{2,}", " ").trim();
     }
 }
