@@ -65,6 +65,9 @@ app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:4200}
 
+  backend:
+    url: ${BACKEND_URL:http://localhost:8080}
+
   delivery:
     sync-interval-ms: ${DELIVERY_SYNC_INTERVAL:300000}  # 5 minutes
 

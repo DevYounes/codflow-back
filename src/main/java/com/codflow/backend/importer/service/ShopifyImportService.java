@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,8 +47,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ShopifyImportService {
 
-    private static final String SHOPIFY_API_VERSION = "2024-01";
-    private static final int    PAGE_LIMIT          = 250;
+    private static final String SHOPIFY_API_VERSION    = "2024-01";
+    private static final int    PAGE_LIMIT             = 250;
+    private static final String OAUTH_CALLBACK_PATH    = "/api/v1/import/shopify/oauth/callback";
+
+    @Value("${app.backend.url:http://localhost:8080}")
+    private String backendUrl;
 
     private final SystemSettingService    settingService;
     private final OrderService            orderService;
@@ -120,7 +125,7 @@ public class ShopifyImportService {
      * Requires shopify.store.domain and shopify.app.client_id to be configured.
      */
     @Transactional
-    public String startOAuth(String redirectUri) {
+    public String startOAuth() {
         String clientId = settingService.get(SystemSettingService.KEY_SHOPIFY_CLIENT_ID)
                 .orElseThrow(() -> new IllegalStateException(
                         "shopify.app.client_id non configuré. Définissez-le via PUT /api/v1/settings/shopify.app.client_id"));
@@ -131,7 +136,11 @@ public class ShopifyImportService {
         String state = UUID.randomUUID().toString().replace("-", "");
         settingService.set(SystemSettingService.KEY_SHOPIFY_OAUTH_STATE, state);
 
-        String encodedRedirect = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
+        // Le callback pointe toujours vers le backend (jamais vers le frontend)
+        String callbackUrl = backendUrl + OAUTH_CALLBACK_PATH;
+        String encodedRedirect = URLEncoder.encode(callbackUrl, StandardCharsets.UTF_8);
+        log.info("Shopify OAuth start — redirect_uri={}", callbackUrl);
+
         return "https://" + domain + "/admin/oauth/authorize"
                 + "?client_id=" + clientId
                 + "&scope=read_orders,write_orders"

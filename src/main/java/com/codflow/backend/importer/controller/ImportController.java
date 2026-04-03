@@ -110,13 +110,12 @@ public class ImportController {
         description = """
             Génère l'URL d'autorisation Shopify OAuth. Ouvrez l'URL retournée dans votre navigateur pour autoriser l'app.
             Pré-requis: shopify.store.domain, shopify.app.client_id, shopify.app.client_secret configurés via PUT /api/v1/settings/{key}.
-            Le redirectUri doit correspondre exactement à l'URL configurée dans le Dev Dashboard Shopify.
+            Le redirect_uri est construit automatiquement depuis app.backend.url (application.yml).
             """
     )
-    public ResponseEntity<ApiResponse<Map<String, String>>> startShopifyOAuth(
-            @RequestParam String redirectUri) {
+    public ResponseEntity<ApiResponse<Map<String, String>>> startShopifyOAuth() {
         try {
-            String oauthUrl = shopifyImportService.startOAuth(redirectUri);
+            String oauthUrl = shopifyImportService.startOAuth();
             return ResponseEntity.ok(ApiResponse.success(
                     "URL OAuth générée. Ouvrez cette URL dans votre navigateur pour autoriser l'application.",
                     Map.of("oauthUrl", oauthUrl)));
