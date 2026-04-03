@@ -13,6 +13,10 @@ public class StockAlertDto {
     private Long productId;
     private String productName;
     private String productSku;
+    /** Null for product-level alerts; set for variant-level alerts. */
+    private Long variantId;
+    private String variantSku;
+    private String variantLabel;  // e.g. "Rouge / 42"
     private AlertType alertType;
     private int threshold;
     private int currentLevel;

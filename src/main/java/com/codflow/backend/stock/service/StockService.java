@@ -28,7 +28,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -202,30 +204,68 @@ public class StockService {
     @Transactional
     public void checkAllStockAlerts() {
         log.debug("Running scheduled stock alert check...");
-        List<Product> lowStock = productRepository.findLowStockProducts();
-        lowStock.forEach(this::checkAndCreateAlerts);
+        Set<Long> checked = new HashSet<>();
+        // Products with low aggregate stock
+        productRepository.findLowStockProducts().forEach(p -> {
+            checked.add(p.getId());
+            checkAndCreateAlerts(p);
+        });
+        // Products with at least one low-stock variant (may not be in the aggregate list)
+        variantRepository.findProductsWithLowStockVariants().forEach(p -> {
+            if (checked.add(p.getId())) {
+                checkAndCreateAlerts(p);
+            }
+        });
     }
 
     private void checkAndCreateAlerts(Product product) {
         if (!product.isAlertEnabled()) return;
 
-        if (product.getCurrentStock() == 0) {
-            createAlertIfNotExists(product, AlertType.OUT_OF_STOCK);
-        } else if (product.getCurrentStock() <= product.getMinThreshold()) {
-            createAlertIfNotExists(product, AlertType.LOW_STOCK);
+        List<ProductVariant> variants = variantRepository.findByProductIdAndActiveTrue(product.getId());
+
+        if (!variants.isEmpty()) {
+            // Per-variant alerts
+            for (ProductVariant variant : variants) {
+                if (variant.getCurrentStock() == 0) {
+                    createAlertIfNotExists(product, variant, AlertType.OUT_OF_STOCK);
+                } else if (variant.getCurrentStock() <= product.getMinThreshold()) {
+                    createAlertIfNotExists(product, variant, AlertType.LOW_STOCK);
+                }
+            }
+        } else {
+            // Product-level alert (no variants)
+            if (product.getCurrentStock() == 0) {
+                createAlertIfNotExists(product, null, AlertType.OUT_OF_STOCK);
+            } else if (product.getCurrentStock() <= product.getMinThreshold()) {
+                createAlertIfNotExists(product, null, AlertType.LOW_STOCK);
+            }
         }
     }
 
-    private void createAlertIfNotExists(Product product, AlertType alertType) {
-        boolean exists = stockAlertRepository.existsByProductIdAndAlertTypeAndResolvedFalse(product.getId(), alertType);
+    private void createAlertIfNotExists(Product product, ProductVariant variant, AlertType alertType) {
+        boolean exists;
+        int currentLevel;
+        String label;
+        if (variant != null) {
+            exists = stockAlertRepository.existsByProductIdAndVariantIdAndAlertTypeAndResolvedFalse(
+                    product.getId(), variant.getId(), alertType);
+            currentLevel = variant.getCurrentStock();
+            label = product.getSku() + " / " + variant.getColor() + " " + variant.getSize();
+        } else {
+            exists = stockAlertRepository.existsByProductIdAndVariantIsNullAndAlertTypeAndResolvedFalse(
+                    product.getId(), alertType);
+            currentLevel = product.getCurrentStock();
+            label = product.getSku();
+        }
         if (!exists) {
             StockAlert alert = new StockAlert();
             alert.setProduct(product);
+            alert.setVariant(variant);
             alert.setAlertType(alertType);
             alert.setThreshold(product.getMinThreshold());
-            alert.setCurrentLevel(product.getCurrentStock());
+            alert.setCurrentLevel(currentLevel);
             stockAlertRepository.save(alert);
-            log.warn("Stock alert created: {} for product {} (stock: {})", alertType, product.getSku(), product.getCurrentStock());
+            log.warn("Stock alert created: {} for {} (stock: {})", alertType, label, currentLevel);
         }
     }
 
@@ -248,11 +288,21 @@ public class StockService {
     }
 
     private StockAlertDto toAlertDto(StockAlert a) {
+        ProductVariant v = a.getVariant();
+        String variantLabel = null;
+        if (v != null) {
+            variantLabel = (v.getColor() != null ? v.getColor() : "")
+                    + (v.getColor() != null && v.getSize() != null ? " / " : "")
+                    + (v.getSize() != null ? v.getSize() : "");
+        }
         return StockAlertDto.builder()
                 .id(a.getId())
                 .productId(a.getProduct().getId())
                 .productName(a.getProduct().getName())
                 .productSku(a.getProduct().getSku())
+                .variantId(v != null ? v.getId() : null)
+                .variantSku(v != null ? v.getVariantSku() : null)
+                .variantLabel(variantLabel)
                 .alertType(a.getAlertType())
                 .threshold(a.getThreshold())
                 .currentLevel(a.getCurrentLevel())

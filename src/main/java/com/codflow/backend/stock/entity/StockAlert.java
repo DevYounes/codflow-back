@@ -1,6 +1,7 @@
 package com.codflow.backend.stock.entity;
 
 import com.codflow.backend.product.entity.Product;
+import com.codflow.backend.product.entity.ProductVariant;
 import com.codflow.backend.stock.enums.AlertType;
 import com.codflow.backend.team.entity.User;
 import jakarta.persistence.*;
@@ -27,6 +28,11 @@ public class StockAlert {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
+
+    /** Null = product-level alert. Non-null = variant-specific alert. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variant_id")
+    private ProductVariant variant;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "alert_type", nullable = false, length = 30)
