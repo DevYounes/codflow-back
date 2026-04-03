@@ -8,19 +8,27 @@ import com.codflow.backend.importer.service.ShopifyImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/import")
 @RequiredArgsConstructor
 @Tag(name = "Import", description = "Import de commandes depuis Google Sheets / Excel")
 public class ImportController {
+
+    @Value("${app.frontend.url:http://localhost:4200}")
+    private String frontendUrl;
 
     private final ExcelImportService excelImportService;
     private final AutoImportService autoImportService;
@@ -122,19 +130,26 @@ public class ImportController {
      * This endpoint is PUBLIC (no JWT required) — Shopify calls it via browser redirect.
      * Configure this URL in the Dev Dashboard: https://api.codflow.ma/api/v1/import/shopify/oauth/callback
      */
+    /**
+     * Step 2 of OAuth — Shopify redirects here after authorization.
+     * This endpoint is PUBLIC (no JWT). After processing, redirects browser to frontend.
+     * The redirectUri used in /oauth/start MUST point to this backend endpoint directly,
+     * e.g. http://localhost:8080/api/v1/import/shopify/oauth/callback
+     */
     @GetMapping("/shopify/oauth/callback")
     @Operation(summary = "Callback OAuth Shopify (appelé automatiquement par Shopify après autorisation)")
-    public ResponseEntity<ApiResponse<String>> shopifyOAuthCallback(
+    public void shopifyOAuthCallback(
             @RequestParam String shop,
             @RequestParam String code,
-            @RequestParam String state) {
+            @RequestParam String state,
+            HttpServletResponse response) throws IOException {
         try {
             shopifyImportService.completeOAuth(shop, code, state);
-            return ResponseEntity.ok(ApiResponse.success(
-                    "Connexion Shopify réussie! Le token a été enregistré et l'import automatique est activé.",
-                    shop));
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+            response.sendRedirect(frontendUrl + "/dashboard?shopify=connected");
+        } catch (Exception e) {
+            log.error("Shopify OAuth callback failed: {}", e.getMessage());
+            response.sendRedirect(frontendUrl + "/dashboard?shopify=error&message="
+                    + java.net.URLEncoder.encode(e.getMessage(), java.nio.charset.StandardCharsets.UTF_8));
         }
     }
 

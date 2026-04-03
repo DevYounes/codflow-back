@@ -62,6 +62,9 @@ app:
   cors:
     allowed-origins: ${CORS_ORIGINS:http://localhost:4200}
 
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:4200}
+
   delivery:
     sync-interval-ms: ${DELIVERY_SYNC_INTERVAL:300000}  # 5 minutes
 
