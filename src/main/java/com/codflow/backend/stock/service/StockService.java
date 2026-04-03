@@ -110,13 +110,21 @@ public class StockService {
     }
 
     @Transactional
-    public void deductStockForOrder(Long productId, int quantity, Long orderId) {
+    public void deductStockForOrder(Long productId, Long variantId, int quantity, Long orderId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
 
+        // Déduire du stock variante si lié
+        if (variantId != null) {
+            variantRepository.findById(variantId).ifPresent(v -> {
+                int newVariantStock = Math.max(0, v.getCurrentStock() - quantity);
+                variantRepository.updateCurrentStock(v.getId(), newVariantStock);
+            });
+        }
+
+        // Déduire du stock global produit
         int previousStock = product.getCurrentStock();
         int newStock = Math.max(0, previousStock - quantity);
-
         productRepository.updateCurrentStock(product.getId(), newStock);
         product.setCurrentStock(newStock);
 
@@ -135,13 +143,20 @@ public class StockService {
     }
 
     @Transactional
-    public void restoreStockForOrder(Long productId, int quantity, Long orderId, String reason) {
+    public void restoreStockForOrder(Long productId, Long variantId, int quantity, Long orderId, String reason) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
 
+        // Restaurer le stock variante si lié
+        if (variantId != null) {
+            variantRepository.findById(variantId).ifPresent(v -> {
+                variantRepository.updateCurrentStock(v.getId(), v.getCurrentStock() + quantity);
+            });
+        }
+
+        // Restaurer le stock global produit
         int previousStock = product.getCurrentStock();
         int newStock = previousStock + quantity;
-
         productRepository.updateCurrentStock(product.getId(), newStock);
         product.setCurrentStock(newStock);
 

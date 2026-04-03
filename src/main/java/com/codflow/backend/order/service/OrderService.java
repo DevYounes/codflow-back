@@ -357,8 +357,10 @@ public class OrderService {
         order.getItems().forEach(item -> {
             if (item.getProduct() != null) {
                 try {
-                    stockService.deductStockForOrder(item.getProduct().getId(), item.getQuantity(), order.getId());
-                    log.info("[STOCK-DEDUCT] Commande {} — produit id={} sku='{}' qty={}", order.getOrderNumber(), item.getProduct().getId(), item.getProductSku(), item.getQuantity());
+                    Long variantId = item.getVariant() != null ? item.getVariant().getId() : null;
+                    stockService.deductStockForOrder(item.getProduct().getId(), variantId, item.getQuantity(), order.getId());
+                    log.info("[STOCK-DEDUCT] Commande {} — produit id={} sku='{}' variantId={} qty={}",
+                            order.getOrderNumber(), item.getProduct().getId(), item.getProductSku(), variantId, item.getQuantity());
                 } catch (Exception e) {
                     log.warn("Could not deduct stock for product {} in order {}: {}",
                             item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
@@ -392,7 +394,8 @@ public class OrderService {
         order.getItems().forEach(item -> {
             if (item.getProduct() != null) {
                 try {
-                    stockService.restoreStockForOrder(item.getProduct().getId(), item.getQuantity(), order.getId(), reason);
+                    Long variantId = item.getVariant() != null ? item.getVariant().getId() : null;
+                    stockService.restoreStockForOrder(item.getProduct().getId(), variantId, item.getQuantity(), order.getId(), reason);
                 } catch (Exception e) {
                     log.warn("Could not restore stock for product {} in order {}: {}",
                             item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
