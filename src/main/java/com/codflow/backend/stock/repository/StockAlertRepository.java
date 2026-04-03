@@ -28,4 +28,6 @@ public interface StockAlertRepository extends JpaRepository<StockAlert, Long> {
 
     @Query("SELECT a FROM StockAlert a WHERE a.product.id = :productId AND a.variant.id = :variantId AND a.resolved = false")
     List<StockAlert> findByProductIdAndVariantIdAndResolvedFalse(@Param("productId") Long productId, @Param("variantId") Long variantId);
+
+    void deleteByVariantId(Long variantId);
 }

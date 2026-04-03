@@ -95,9 +95,9 @@ public class ProductController {
 
     @DeleteMapping("/variants/{variantId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    @Operation(summary = "Désactiver une variante")
-    public ResponseEntity<ApiResponse<Void>> deactivateVariant(@PathVariable Long variantId) {
-        productService.deactivateVariant(variantId);
-        return ResponseEntity.ok(ApiResponse.success("Variante désactivée"));
+    @Operation(summary = "Supprimer définitivement une variante (bloqué si liée à des commandes)")
+    public ResponseEntity<ApiResponse<Void>> deleteVariant(@PathVariable Long variantId) {
+        productService.deleteVariant(variantId);
+        return ResponseEntity.ok(ApiResponse.success("Variante supprimée"));
     }
 }

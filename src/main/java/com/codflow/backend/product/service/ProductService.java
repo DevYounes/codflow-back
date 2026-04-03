@@ -12,8 +12,11 @@ import com.codflow.backend.product.entity.ProductVariant;
 import com.codflow.backend.product.repository.ProductRepository;
 import com.codflow.backend.product.repository.ProductSpecification;
 import com.codflow.backend.product.repository.ProductVariantRepository;
+import com.codflow.backend.order.repository.OrderItemRepository;
 import com.codflow.backend.stock.entity.StockMovement;
 import com.codflow.backend.stock.enums.MovementType;
+import com.codflow.backend.stock.repository.StockAlertRepository;
+import com.codflow.backend.stock.repository.StockArrivalItemRepository;
 import com.codflow.backend.stock.repository.StockMovementRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -32,6 +35,9 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
     private final StockMovementRepository stockMovementRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final StockAlertRepository stockAlertRepository;
+    private final StockArrivalItemRepository stockArrivalItemRepository;
 
     @Transactional
     public ProductDto createProduct(CreateProductRequest request) {
@@ -133,11 +139,20 @@ public class ProductService {
     }
 
     @Transactional
-    public void deactivateVariant(Long variantId) {
+    public void deleteVariant(Long variantId) {
         ProductVariant variant = productVariantRepository.findById(variantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Variante", variantId));
-        variant.setActive(false);
-        productVariantRepository.save(variant);
+
+        if (orderItemRepository.existsByVariantId(variantId)) {
+            throw new BusinessException(
+                    "Impossible de supprimer cette variante : elle est liée à des commandes existantes. Désactivez-la à la place.");
+        }
+
+        // Clean up FKs before hard delete
+        stockAlertRepository.deleteByVariantId(variantId);
+        stockArrivalItemRepository.nullifyVariant(variantId);
+
+        productVariantRepository.delete(variant);
     }
 
     public ProductDto toDto(Product product) {
