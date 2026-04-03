@@ -358,10 +358,14 @@ public class OrderService {
             if (item.getProduct() != null) {
                 try {
                     stockService.deductStockForOrder(item.getProduct().getId(), item.getQuantity(), order.getId());
+                    log.info("[STOCK-DEDUCT] Commande {} — produit id={} sku='{}' qty={}", order.getOrderNumber(), item.getProduct().getId(), item.getProductSku(), item.getQuantity());
                 } catch (Exception e) {
                     log.warn("Could not deduct stock for product {} in order {}: {}",
                             item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
                 }
+            } else {
+                log.warn("[STOCK-DEDUCT] Commande {} — article '{}' sku='{}' sans produit lié, stock non déduit.",
+                        order.getOrderNumber(), item.getProductName(), item.getProductSku());
             }
         });
     }

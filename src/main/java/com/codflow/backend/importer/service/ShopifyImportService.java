@@ -384,13 +384,21 @@ public class ShopifyImportService {
                 var product = productRepository.findBySku(sku);
                 if (product.isPresent()) {
                     item.setProductId(product.get().getId());
+                    log.info("[SKU-MATCH] SKU '{}' → produit id={} '{}'", sku, product.get().getId(), product.get().getName());
                 } else {
                     // 2. Essayer SKU variante (ex: "VM-42" → variante pointure 42 du produit VM)
-                    variantRepository.findByVariantSku(sku).ifPresent(v -> {
+                    var variantOpt = variantRepository.findByVariantSku(sku);
+                    if (variantOpt.isPresent()) {
+                        ProductVariant v = variantOpt.get();
                         item.setProductId(v.getProduct().getId());
                         item.setVariantId(v.getId());
-                    });
+                        log.info("[SKU-MATCH] SKU '{}' → variante id={} (produit id={} '{}')", sku, v.getId(), v.getProduct().getId(), v.getProduct().getName());
+                    } else {
+                        log.warn("[SKU-MATCH] SKU '{}' introuvable — ni produit ni variante. Stock et coût ignorés.", sku);
+                    }
                 }
+            } else {
+                log.warn("[SKU-MATCH] Article '{}' sans SKU — impossible de lier au produit.", item.getProductName());
             }
 
             items.add(item);
