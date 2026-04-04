@@ -1,7 +1,6 @@
 package com.codflow.backend.importer.controller;
 
 import com.codflow.backend.common.dto.ApiResponse;
-import com.codflow.backend.importer.dto.HistoricalImportRequest;
 import com.codflow.backend.importer.dto.ImportResultDto;
 import com.codflow.backend.importer.service.AutoImportService;
 import com.codflow.backend.importer.service.ExcelImportService;
@@ -152,39 +151,6 @@ public class ImportController {
             log.error("Shopify OAuth callback failed: {}", e.getMessage());
             response.sendRedirect(frontendUrl + "/dashboard?shopify=error&message="
                     + java.net.URLEncoder.encode(e.getMessage(), java.nio.charset.StandardCharsets.UTF_8));
-        }
-    }
-
-    /**
-     * Import historique — À n'utiliser QU'UNE SEULE FOIS pour migrer les données existantes.
-     * Importe toutes les commandes Shopify depuis le début avec leurs vrais statuts.
-     * Met à jour le curseur last_order_id à la fin pour que les imports automatiques
-     * suivants ne reprennent que les nouvelles commandes.
-     */
-    @PostMapping("/shopify/historical")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(
-        summary = "Import historique Shopify (migration one-shot)",
-        description = """
-            Importe TOUTES les commandes Shopify existantes avec leurs vrais statuts.
-            Mapping automatique: fulfilled→LIVRE, refunded→RETOURNE, cancelled→ANNULE/FAKE_ORDER, paid→ENVOYE.
-            Crée un delivery_shipment pour chaque LIVRE/RETOURNE avec les frais spécifiés.
-            NE déduit PAS le stock — à ajuster manuellement après l'import.
-            À n'utiliser qu'une seule fois pour la migration initiale.
-            """
-    )
-    public ResponseEntity<ApiResponse<ImportResultDto>> historicalShopifyImport(
-            @RequestBody(required = false) HistoricalImportRequest request) {
-        if (request == null) request = new HistoricalImportRequest();
-        try {
-            ImportResultDto result = shopifyImportService.doHistoricalImport(
-                    request.getDeliveryFee(), request.getReturnFee());
-            return ResponseEntity.ok(ApiResponse.success(
-                    String.format("Import historique terminé: %d importées, %d ignorées, %d erreurs",
-                            result.getImported(), result.getSkipped(), result.getErrors()),
-                    result));
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
 

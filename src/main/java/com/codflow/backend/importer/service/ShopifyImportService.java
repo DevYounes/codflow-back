@@ -1,13 +1,6 @@
 package com.codflow.backend.importer.service;
 
-import com.codflow.backend.delivery.entity.DeliveryProviderConfig;
-import com.codflow.backend.delivery.entity.DeliveryShipment;
-import com.codflow.backend.delivery.enums.ShipmentStatus;
-import com.codflow.backend.delivery.repository.DeliveryProviderRepository;
-import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.entity.Order;
-import com.codflow.backend.order.entity.OrderItem;
-import com.codflow.backend.order.enums.OrderStatus;
 import com.codflow.backend.common.util.PhoneNormalizer;
 import com.codflow.backend.config.service.SystemSettingService;
 import com.codflow.backend.importer.dto.ImportResultDto;
@@ -35,8 +28,6 @@ import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -69,8 +60,6 @@ public class ShopifyImportService {
     private final OrderRepository           orderRepository;
     private final ProductRepository         productRepository;
     private final ProductVariantRepository  variantRepository;
-    private final DeliveryShipmentRepository shipmentRepository;
-    private final DeliveryProviderRepository providerRepository;
     private final WebClient.Builder         webClientBuilder;
     private final ObjectMapper              objectMapper;
 
@@ -426,171 +415,6 @@ public class ShopifyImportService {
         }
         req.setItems(items);
         return req;
-    }
-
-    // -----------------------------------------------------------------------
-    // Historical import (migration de données existantes)
-    // -----------------------------------------------------------------------
-
-    /**
-     * Importe TOUTES les commandes Shopify depuis le début avec leurs vrais statuts.
-     * À utiliser UNE SEULE FOIS pour migrer les données existantes.
-     * - Ne déduit PAS le stock (à ajuster manuellement ensuite).
-     * - Crée un delivery_shipment pour chaque LIVRE / RETOURNE.
-     * - Met à jour shopify.import.last_order_id à la fin pour que les
-     *   imports automatiques suivants ne reprennent que les nouvelles commandes.
-     */
-    @Transactional
-    public ImportResultDto doHistoricalImport(BigDecimal deliveryFee, BigDecimal returnFee) {
-        String domain = settingService.get(SystemSettingService.KEY_SHOPIFY_DOMAIN)
-                .orElseThrow(() -> new IllegalStateException("shopify.store.domain non configuré"));
-        String token  = settingService.get(SystemSettingService.KEY_SHOPIFY_TOKEN)
-                .orElseThrow(() -> new IllegalStateException("shopify.access.token non configuré"));
-
-        DeliveryProviderConfig provider = providerRepository.findByActiveTrue()
-                .stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("Aucun transporteur actif configuré"));
-
-        List<String> errors  = new ArrayList<>();
-        List<String> skipped = new ArrayList<>();
-        int imported = 0, totalRows = 0;
-        long maxOrderId = 0;
-        long pageSinceId = 0; // commence au tout début
-
-        while (true) {
-            String url = buildOrdersUrl(domain, pageSinceId);
-            JsonNode ordersNode = fetchOrders(url, token);
-            if (ordersNode == null || !ordersNode.isArray() || ordersNode.isEmpty()) break;
-
-            for (JsonNode order : ordersNode) {
-                totalRows++;
-                long shopifyId = order.path("id").asLong();
-                String orderName = order.path("name").asText("?");
-                if (shopifyId > maxOrderId) maxOrderId = shopifyId;
-
-                if (orderRepository.existsByShopifyOrderId(String.valueOf(shopifyId))) {
-                    skipped.add(orderName + " déjà importée");
-                    continue;
-                }
-
-                try {
-                    CreateOrderRequest req = parseShopifyOrder(order);
-                    orderService.createOrder(req, null);
-
-                    Order saved = orderRepository.findByOrderNumber(req.getOrderNumber())
-                            .orElseThrow(() -> new IllegalStateException("Commande introuvable après création"));
-
-                    // Snapshot des coûts unitaires depuis les produits (pour les analytics)
-                    for (OrderItem item : saved.getItems()) {
-                        if (item.getUnitCost() == null) {
-                            if (item.getVariant() != null && item.getVariant().getCostPrice() != null) {
-                                item.setUnitCost(item.getVariant().getCostPrice());
-                            } else if (item.getProduct() != null && item.getProduct().getCostPrice() != null) {
-                                item.setUnitCost(item.getProduct().getCostPrice());
-                            }
-                        }
-                    }
-
-                    // Mapping statut Shopify → statut CodFlow
-                    OrderStatus targetStatus = mapShopifyStatus(order);
-                    LocalDateTime orderDate = parseShopifyDate(order.path("created_at").asText(null));
-
-                    saved.setStatus(targetStatus);
-                    if (targetStatus == OrderStatus.LIVRE || targetStatus == OrderStatus.RETOURNE
-                            || targetStatus == OrderStatus.ENVOYE || targetStatus == OrderStatus.CONFIRME) {
-                        saved.setConfirmedAt(orderDate);
-                    }
-                    if (targetStatus.isCancelled()) {
-                        saved.setCancelledAt(orderDate);
-                    }
-                    orderRepository.save(saved);
-
-                    // Créer un shipment pour les LIVRE / RETOURNE (nécessaire pour les analytics)
-                    if (targetStatus == OrderStatus.LIVRE) {
-                        createHistoricalShipment(saved, provider, ShipmentStatus.DELIVERED,
-                                deliveryFee, "LIVRAISON", order);
-                    } else if (targetStatus == OrderStatus.RETOURNE) {
-                        createHistoricalShipment(saved, provider, ShipmentStatus.RETURNED,
-                                returnFee, "RETOUR", order);
-                    }
-
-                    imported++;
-                    log.info("[HISTORICAL] {} → {}", orderName, targetStatus);
-                } catch (Exception e) {
-                    errors.add(orderName + ": " + e.getMessage());
-                    log.warn("[HISTORICAL] Erreur {}: {}", orderName, e.getMessage());
-                }
-            }
-
-            if (ordersNode.size() < PAGE_LIMIT) break;
-            pageSinceId = ordersNode.get(ordersNode.size() - 1).path("id").asLong();
-        }
-
-        // Met à jour le curseur pour que l'auto-import ne reprenne que les nouvelles commandes
-        if (maxOrderId > 0) {
-            settingService.set(SystemSettingService.KEY_SHOPIFY_LAST_ORDER_ID, String.valueOf(maxOrderId));
-            log.info("[HISTORICAL] Import terminé. Curseur mis à jour: last_order_id={}", maxOrderId);
-        }
-
-        return ImportResultDto.builder()
-                .totalRows(totalRows)
-                .imported(imported)
-                .skipped(skipped.size())
-                .errors(errors.size())
-                .errorMessages(errors)
-                .skippedMessages(skipped)
-                .build();
-    }
-
-    private OrderStatus mapShopifyStatus(JsonNode order) {
-        String cancelledAt = order.path("cancelled_at").asText(null);
-        if (cancelledAt != null && !cancelledAt.isBlank() && !cancelledAt.equals("null")) {
-            String reason = order.path("cancel_reason").asText("");
-            return "fraud".equals(reason) ? OrderStatus.FAKE_ORDER : OrderStatus.ANNULE;
-        }
-        String fulfillment = order.path("fulfillment_status").asText(null);
-        String financial   = order.path("financial_status").asText("");
-        if ("fulfilled".equals(fulfillment))  return OrderStatus.LIVRE;
-        if ("refunded".equals(financial))     return OrderStatus.RETOURNE;
-        if ("paid".equals(financial))         return OrderStatus.ENVOYE;
-        return OrderStatus.NOUVEAU;
-    }
-
-    private void createHistoricalShipment(Order order, DeliveryProviderConfig provider,
-            ShipmentStatus status, BigDecimal fee, String feeType, JsonNode shopifyOrder) {
-
-        String trackingNumber = null;
-        JsonNode fulfillments = shopifyOrder.path("fulfillments");
-        if (fulfillments.isArray() && !fulfillments.isEmpty()) {
-            String tn = fulfillments.get(0).path("tracking_number").asText(null);
-            if (tn != null && !tn.isBlank() && !tn.equals("null")) trackingNumber = tn;
-        }
-
-        LocalDateTime orderDate = parseShopifyDate(shopifyOrder.path("created_at").asText(null));
-
-        DeliveryShipment shipment = new DeliveryShipment();
-        shipment.setOrder(order);
-        shipment.setProvider(provider);
-        shipment.setStatus(status);
-        shipment.setTrackingNumber(trackingNumber);
-        shipment.setAppliedFee(fee);
-        shipment.setAppliedFeeType(feeType);
-        shipment.setNotes("Import historique Shopify");
-
-        if (status == ShipmentStatus.DELIVERED) {
-            shipment.setDeliveredAt(orderDate);
-            shipment.setDeliveredPrice(fee);
-        } else {
-            shipment.setReturnedAt(orderDate);
-            shipment.setReturnedPrice(fee);
-        }
-        shipmentRepository.save(shipment);
-    }
-
-    private LocalDateTime parseShopifyDate(String dateStr) {
-        if (dateStr == null || dateStr.isBlank() || "null".equals(dateStr)) return LocalDateTime.now();
-        try { return OffsetDateTime.parse(dateStr).toLocalDateTime(); }
-        catch (Exception e) { return LocalDateTime.now(); }
     }
 
     private BigDecimal parseBigDecimal(String val) {
