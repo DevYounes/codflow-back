@@ -8,6 +8,8 @@ import com.codflow.backend.charges.enums.BusinessChargeType;
 import com.codflow.backend.charges.repository.BusinessChargeRepository;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.delivery.entity.DeliveryShipment;
+import com.codflow.backend.product.repository.ProductRepository;
+import com.codflow.backend.product.repository.ProductVariantRepository;
 import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.enums.OrderStatus;
@@ -36,6 +38,8 @@ public class BusinessChargesService {
     private final DeliveryShipmentRepository shipmentRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
+    private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
 
     // -------------------------------------------------------------------------
     // CRUD charges opérationnelles
@@ -126,9 +130,19 @@ public class BusinessChargesService {
                 .map(s -> s.getOrder().getItems().stream()
                         .map(i -> {
                             BigDecimal cost = i.getUnitCost();
-                            // Fallback: si unitCost pas snapshoté, utiliser le costPrice actuel du produit/variante
+                            // Fallback 1: variant lié
                             if (cost == null && i.getVariant() != null) cost = i.getVariant().getCostPrice();
+                            // Fallback 2: produit lié
                             if (cost == null && i.getProduct() != null) cost = i.getProduct().getCostPrice();
+                            // Fallback 3: lookup par SKU (items historiques non encore backfillés)
+                            if (cost == null && i.getProductSku() != null && !i.getProductSku().isBlank()) {
+                                cost = variantRepository.findByVariantSku(i.getProductSku())
+                                        .map(v -> v.getCostPrice() != null ? v.getCostPrice()
+                                                : (v.getProduct() != null ? v.getProduct().getCostPrice() : null))
+                                        .orElseGet(() -> productRepository.findBySku(i.getProductSku())
+                                                .map(p -> p.getCostPrice())
+                                                .orElse(null));
+                            }
                             return cost != null ? cost.multiply(BigDecimal.valueOf(i.getQuantity())) : BigDecimal.ZERO;
                         })
                         .reduce(BigDecimal.ZERO, BigDecimal::add))

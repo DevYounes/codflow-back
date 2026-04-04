@@ -5,6 +5,7 @@ import com.codflow.backend.importer.dto.ImportResultDto;
 import com.codflow.backend.importer.service.AutoImportService;
 import com.codflow.backend.importer.service.ExcelImportService;
 import com.codflow.backend.importer.service.HistoricalExcelMigrationService;
+import com.codflow.backend.importer.service.OrderCostBackfillService;
 import com.codflow.backend.importer.service.ShopifyImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +36,7 @@ public class ImportController {
     private final AutoImportService autoImportService;
     private final ShopifyImportService shopifyImportService;
     private final HistoricalExcelMigrationService historicalExcelMigrationService;
+    private final OrderCostBackfillService orderCostBackfillService;
 
     /**
      * Manual upload of an Excel file (.xlsx).
@@ -225,6 +227,41 @@ public class ImportController {
                     result));
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Relie les articles de commandes (OrderItem) sans produit aux produits/variantes
+     * existants via leur SKU, et snapshote le unitCost depuis le costPrice du produit.
+     *
+     * À lancer UNE SEULE FOIS après :
+     *   1. Import des commandes Shopify (→ items sans produit lié)
+     *   2. Création des produits/variantes avec leurs SKU et prix de revient
+     *
+     * Idempotent : les items déjà liés sont ignorés.
+     * Les items sans SKU ou avec SKU non trouvé sont listés pour correction manuelle.
+     */
+    @PostMapping("/backfill-order-costs")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Relier les articles de commande aux produits (backfill coûts)",
+        description = """
+            Scanne tous les articles de commande non liés à un produit et tente de les
+            relier via le SKU Shopify. Snapshote automatiquement le unitCost depuis le
+            costPrice du produit/variante trouvé.
+            Opération idempotente — peut être relancée après ajout de nouveaux produits.
+            Les articles sans SKU ou avec SKU non trouvé sont listés pour action manuelle.
+            """
+    )
+    public ResponseEntity<ApiResponse<ImportResultDto>> backfillOrderCosts() {
+        try {
+            ImportResultDto result = orderCostBackfillService.backfill();
+            return ResponseEntity.ok(ApiResponse.success(
+                    String.format("Backfill terminé: %d liés, %d non résolus sur %d items",
+                            result.getImported(), result.getErrors(), result.getTotalRows()),
+                    result));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
         }
     }
 }
