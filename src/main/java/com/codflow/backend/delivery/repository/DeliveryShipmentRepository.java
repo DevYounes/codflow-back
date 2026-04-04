@@ -18,6 +18,8 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
 
     Optional<DeliveryShipment> findByOrderId(Long orderId);
 
+    boolean existsByOrderId(Long orderId);
+
     Optional<DeliveryShipment> findByTrackingNumber(String trackingNumber);
 
     List<DeliveryShipment> findByStatus(ShipmentStatus status);

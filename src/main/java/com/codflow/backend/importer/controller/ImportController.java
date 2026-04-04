@@ -5,6 +5,7 @@ import com.codflow.backend.importer.dto.HistoricalImportRequest;
 import com.codflow.backend.importer.dto.ImportResultDto;
 import com.codflow.backend.importer.service.AutoImportService;
 import com.codflow.backend.importer.service.ExcelImportService;
+import com.codflow.backend.importer.service.HistoricalExcelMigrationService;
 import com.codflow.backend.importer.service.ShopifyImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,6 +35,7 @@ public class ImportController {
     private final ExcelImportService excelImportService;
     private final AutoImportService autoImportService;
     private final ShopifyImportService shopifyImportService;
+    private final HistoricalExcelMigrationService historicalExcelMigrationService;
 
     /**
      * Manual upload of an Excel file (.xlsx).
@@ -204,6 +206,58 @@ public class ImportController {
                             result.getImported(), result.getSkipped(), result.getErrors()),
                     result));
         } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * One-shot migration endpoint — upload your Excel tracking file (File 2) to update
+     * order statuses and create delivery shipments from real historical data.
+     *
+     * Required Excel columns (detected automatically by header name):
+     *   - "Order ID"               → Shopify order ID
+     *   - "Status de confirmation" → confirmation status
+     *   - "Statut de livraison"    → delivery/shipment status
+     *   - "Tracking number"        → Ozon tracking code
+     *   - "Delivred Fee"           → per-order delivery fee (e.g. "35dh")
+     *
+     * Default fees are used when a row has no fee value.
+     * The endpoint is idempotent: already-updated LIVRE/RETOURNE orders are skipped.
+     */
+    @PostMapping(value = "/shopify/historical/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Migration historique depuis Excel (one-shot)",
+        description = """
+            Upload le fichier Excel de suivi (Fichier 2) pour mettre à jour les statuts des
+            commandes déjà importées depuis Shopify et créer les shipments de livraison/retour.
+            Colonnes détectées automatiquement: Order ID, Status de confirmation,
+            Statut de livraison, Tracking number, Delivred Fee.
+            Les frais par défaut sont utilisés quand la colonne "Delivred Fee" est absente ou vide.
+            Opération idempotente: les commandes déjà en LIVRE/RETOURNE sont ignorées.
+            À utiliser une seule fois après l'import historique Shopify.
+            """
+    )
+    public ResponseEntity<ApiResponse<ImportResultDto>> historicalExcelMigration(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "defaultDeliveryFee", defaultValue = "25") java.math.BigDecimal defaultDeliveryFee,
+            @RequestParam(value = "defaultReturnFee",   defaultValue = "10") java.math.BigDecimal defaultReturnFee) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Le fichier est vide"));
+        }
+        String filename = file.getOriginalFilename();
+        if (filename == null || (!filename.endsWith(".xlsx") && !filename.endsWith(".xls"))) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Format attendu: .xlsx ou .xls"));
+        }
+        try {
+            ImportResultDto result = historicalExcelMigrationService.migrateFromExcel(
+                    file, defaultDeliveryFee, defaultReturnFee);
+            return ResponseEntity.ok(ApiResponse.success(
+                    String.format("Migration terminée: %d mis à jour, %d ignorées, %d erreurs",
+                            result.getImported(), result.getSkipped(), result.getErrors()),
+                    result));
+        } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
