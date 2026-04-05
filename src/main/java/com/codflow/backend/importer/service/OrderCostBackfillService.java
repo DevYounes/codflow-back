@@ -58,8 +58,9 @@ public class OrderCostBackfillService {
                 continue;
             }
 
-            // 1. Essayer SKU variante
+            // 1. Essayer SKU variante (exact puis case-insensitive)
             Optional<ProductVariant> variantOpt = variantRepository.findByVariantSku(sku);
+            if (variantOpt.isEmpty()) variantOpt = variantRepository.findByVariantSkuIgnoreCase(sku);
             if (variantOpt.isPresent()) {
                 ProductVariant v = variantOpt.get();
                 item.setVariant(v);
@@ -74,8 +75,9 @@ public class OrderCostBackfillService {
                 continue;
             }
 
-            // 2. Essayer SKU produit
+            // 2. Essayer SKU produit (exact puis case-insensitive)
             Optional<Product> productOpt = productRepository.findBySku(sku);
+            if (productOpt.isEmpty()) productOpt = productRepository.findBySkuIgnoreCase(sku);
             if (productOpt.isPresent()) {
                 Product p = productOpt.get();
                 item.setProduct(p);

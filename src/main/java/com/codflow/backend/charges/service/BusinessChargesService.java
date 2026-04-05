@@ -136,10 +136,11 @@ public class BusinessChargesService {
                             if (cost == null && i.getProduct() != null) cost = i.getProduct().getCostPrice();
                             // Fallback 3: lookup par SKU (items historiques non encore backfillés)
                             if (cost == null && i.getProductSku() != null && !i.getProductSku().isBlank()) {
-                                cost = variantRepository.findByVariantSku(i.getProductSku())
+                                String sku = i.getProductSku();
+                                cost = variantRepository.findByVariantSkuIgnoreCase(sku)
                                         .map(v -> v.getCostPrice() != null ? v.getCostPrice()
                                                 : (v.getProduct() != null ? v.getProduct().getCostPrice() : null))
-                                        .orElseGet(() -> productRepository.findBySku(i.getProductSku())
+                                        .orElseGet(() -> productRepository.findBySkuIgnoreCase(sku)
                                                 .map(p -> p.getCostPrice())
                                                 .orElse(null));
                             }
