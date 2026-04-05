@@ -27,6 +27,9 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     java.util.Optional<ProductVariant> findByVariantSkuIgnoreCase(String variantSku);
 
+    /** Trouve la première variante d'un produit par taille (case-insensitive). */
+    java.util.Optional<ProductVariant> findFirstByProductIdAndSizeIgnoreCase(Long productId, String size);
+
     /** Returns distinct products that have at least one active variant with stock <= product.minThreshold and alertEnabled. */
     @Query("SELECT DISTINCT v.product FROM ProductVariant v WHERE v.active = true AND v.product.alertEnabled = true AND v.currentStock <= v.product.minThreshold")
     List<Product> findProductsWithLowStockVariants();
