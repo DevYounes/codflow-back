@@ -63,7 +63,7 @@ public class CustomerController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Changer le statut d'un client (blacklist, non sérieux, fidèle...)")
     public ResponseEntity<ApiResponse<CustomerDto>> updateStatus(
             @PathVariable Long id,

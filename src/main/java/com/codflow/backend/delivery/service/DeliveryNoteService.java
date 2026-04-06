@@ -95,7 +95,7 @@ public class DeliveryNoteService {
     @Transactional(readOnly = true)
     public DeliveryNoteDto getNoteByRef(String ref) {
         return toDto(noteRepository.findByRef(ref)
-                .orElseThrow(() -> new ResourceNotFoundException("Bon de livraison", ref)));
+                .orElseThrow(() -> new ResourceNotFoundException("Bon de livraison", Long.parseLong(ref))));
     }
 
     // -------------------------------------------------------------------------
