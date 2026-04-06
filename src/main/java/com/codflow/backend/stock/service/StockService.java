@@ -111,23 +111,59 @@ public class StockService {
         return movement;
     }
 
+    /**
+     * CONFIRME → réserve le stock (reservedStock++, currentStock inchangé).
+     * availableStock = currentStock - reservedStock diminue.
+     */
     @Transactional
-    public void deductStockForOrder(Long productId, Long variantId, int quantity, Long orderId) {
+    public void reserveStockForOrder(Long productId, Long variantId, int quantity, Long orderId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
 
-        // Déduire du stock variante si lié
+        if (variantId != null) {
+            variantRepository.findById(variantId).ifPresent(v -> {
+                variantRepository.updateReservedStock(v.getId(), v.getReservedStock() + quantity);
+            });
+        }
+
+        int previousReserved = product.getReservedStock();
+        productRepository.updateReservedStock(product.getId(), previousReserved + quantity);
+
+        StockMovement movement = new StockMovement();
+        movement.setProduct(product);
+        movement.setMovementType(MovementType.RESERVE);
+        movement.setQuantity(quantity);
+        movement.setPreviousStock(product.getCurrentStock());
+        movement.setNewStock(product.getCurrentStock()); // currentStock unchanged
+        movement.setReason("Réservation commande confirmée");
+        movement.setReferenceType("ORDER");
+        movement.setReferenceId(orderId);
+        stockMovementRepository.save(movement);
+    }
+
+    /**
+     * LIVRE → finalise la déduction (currentStock--, reservedStock--).
+     * Le stock est définitivement sorti.
+     */
+    @Transactional
+    public void finalizeStockDeduction(Long productId, Long variantId, int quantity, Long orderId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
+
         if (variantId != null) {
             variantRepository.findById(variantId).ifPresent(v -> {
                 int newVariantStock = Math.max(0, v.getCurrentStock() - quantity);
                 variantRepository.updateCurrentStock(v.getId(), newVariantStock);
+                int newVariantReserved = Math.max(0, v.getReservedStock() - quantity);
+                variantRepository.updateReservedStock(v.getId(), newVariantReserved);
             });
         }
 
-        // Déduire du stock global produit
         int previousStock = product.getCurrentStock();
         int newStock = Math.max(0, previousStock - quantity);
         productRepository.updateCurrentStock(product.getId(), newStock);
+        int newReserved = Math.max(0, product.getReservedStock() - quantity);
+        productRepository.updateReservedStock(product.getId(), newReserved);
         product.setCurrentStock(newStock);
 
         StockMovement movement = new StockMovement();
@@ -136,7 +172,7 @@ public class StockService {
         movement.setQuantity(quantity);
         movement.setPreviousStock(previousStock);
         movement.setNewStock(newStock);
-        movement.setReason("Commande confirmée");
+        movement.setReason("Commande livrée");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);
         stockMovementRepository.save(movement);
@@ -144,19 +180,50 @@ public class StockService {
         checkAndCreateAlerts(product);
     }
 
+    /**
+     * RETOURNE/ANNULÉ avant livraison → libère la réservation (reservedStock--, currentStock inchangé).
+     */
+    @Transactional
+    public void releaseReservation(Long productId, Long variantId, int quantity, Long orderId, String reason) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
+
+        if (variantId != null) {
+            variantRepository.findById(variantId).ifPresent(v -> {
+                int newVariantReserved = Math.max(0, v.getReservedStock() - quantity);
+                variantRepository.updateReservedStock(v.getId(), newVariantReserved);
+            });
+        }
+
+        int newReserved = Math.max(0, product.getReservedStock() - quantity);
+        productRepository.updateReservedStock(product.getId(), newReserved);
+
+        StockMovement movement = new StockMovement();
+        movement.setProduct(product);
+        movement.setMovementType(MovementType.RESERVE_RELEASE);
+        movement.setQuantity(quantity);
+        movement.setPreviousStock(product.getCurrentStock());
+        movement.setNewStock(product.getCurrentStock()); // currentStock unchanged
+        movement.setReason(reason != null ? reason : "Libération de réservation");
+        movement.setReferenceType("ORDER");
+        movement.setReferenceId(orderId);
+        stockMovementRepository.save(movement);
+    }
+
+    /**
+     * RETOURNE après livraison → restaure le stock physique (currentStock++).
+     */
     @Transactional
     public void restoreStockForOrder(Long productId, Long variantId, int quantity, Long orderId, String reason) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
 
-        // Restaurer le stock variante si lié
         if (variantId != null) {
             variantRepository.findById(variantId).ifPresent(v -> {
                 variantRepository.updateCurrentStock(v.getId(), v.getCurrentStock() + quantity);
             });
         }
 
-        // Restaurer le stock global produit
         int previousStock = product.getCurrentStock();
         int newStock = previousStock + quantity;
         productRepository.updateCurrentStock(product.getId(), newStock);
@@ -168,7 +235,7 @@ public class StockService {
         movement.setQuantity(quantity);
         movement.setPreviousStock(previousStock);
         movement.setNewStock(newStock);
-        movement.setReason(reason != null ? reason : "Retour commande");
+        movement.setReason(reason != null ? reason : "Retour commande après livraison");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);
         stockMovementRepository.save(movement);

@@ -151,28 +151,48 @@ public class OrderService {
             if (request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()) {
                 order.setDeliveryCityId(request.getDeliveryCityId());
             }
-            // Deduct stock only once
-            if (!order.isStockDeducted()) {
-                deductStockForOrder(order);
-                order.setStockDeducted(true);
+            // Reserve stock only once (availableStock decreases, currentStock unchanged)
+            if (!order.isStockReserved()) {
+                reserveStockForOrder(order);
+                order.setStockReserved(true);
             }
             // Snapshot du coût de revient au moment de la confirmation
             snapshotUnitCosts(order);
         }
 
+        // LIVRE → finalise la déduction physique (currentStock--, reservedStock--)
+        if (newStatus.isDelivered() && !order.isStockDeducted()) {
+            if (order.isStockReserved()) {
+                finalizeStockDeduction(order);
+                order.setStockReserved(false);
+            }
+            order.setStockDeducted(true);
+        }
+
         if (newStatus.isCancelled() && order.getCancelledAt() == null) {
             order.setCancelledAt(LocalDateTime.now());
-            // Restore stock if it was previously deducted
-            if (order.isStockDeducted()) {
-                restoreStockForOrder(order, "Commande annulée");
+            if (order.isStockReserved()) {
+                // Libère la réservation (commande annulée avant livraison)
+                releaseReservationForOrder(order, "Commande annulée");
+                order.setStockReserved(false);
+            } else if (order.isStockDeducted()) {
+                // Edge case: stock déjà finalisé, on le restaure
+                restoreStockForOrder(order, "Commande annulée après livraison");
                 order.setStockDeducted(false);
             }
         }
 
-        // Retour physique de la marchandise → remettre en stock
-        if (newStatus == OrderStatus.RETOURNE && order.isStockDeducted()) {
-            restoreStockForOrder(order, "Colis retourné");
-            order.setStockDeducted(false);
+        // Retour physique de la marchandise
+        if (newStatus == OrderStatus.RETOURNE) {
+            if (order.isStockReserved()) {
+                // Retourné avant livraison → libère la réservation
+                releaseReservationForOrder(order, "Colis retourné avant livraison");
+                order.setStockReserved(false);
+            } else if (order.isStockDeducted()) {
+                // Retourné après livraison → remettre en stock physique
+                restoreStockForOrder(order, "Colis retourné");
+                order.setStockDeducted(false);
+            }
         }
 
         recordStatusChange(order, previousStatus, newStatus, principal, request.getNotes());
@@ -353,21 +373,53 @@ public class OrderService {
         statusHistoryRepository.save(history);
     }
 
-    private void deductStockForOrder(Order order) {
+    private void reserveStockForOrder(Order order) {
         order.getItems().forEach(item -> {
             if (item.getProduct() != null) {
                 try {
                     Long variantId = item.getVariant() != null ? item.getVariant().getId() : null;
-                    stockService.deductStockForOrder(item.getProduct().getId(), variantId, item.getQuantity(), order.getId());
-                    log.info("[STOCK-DEDUCT] Commande {} — produit id={} sku='{}' variantId={} qty={}",
+                    stockService.reserveStockForOrder(item.getProduct().getId(), variantId, item.getQuantity(), order.getId());
+                    log.info("[STOCK-RESERVE] Commande {} — produit id={} sku='{}' variantId={} qty={}",
                             order.getOrderNumber(), item.getProduct().getId(), item.getProductSku(), variantId, item.getQuantity());
                 } catch (Exception e) {
-                    log.warn("Could not deduct stock for product {} in order {}: {}",
+                    log.warn("Could not reserve stock for product {} in order {}: {}",
                             item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
                 }
             } else {
-                log.warn("[STOCK-DEDUCT] Commande {} — article '{}' sku='{}' sans produit lié, stock non déduit.",
+                log.warn("[STOCK-RESERVE] Commande {} — article '{}' sku='{}' sans produit lié, stock non réservé.",
                         order.getOrderNumber(), item.getProductName(), item.getProductSku());
+            }
+        });
+    }
+
+    private void finalizeStockDeduction(Order order) {
+        order.getItems().forEach(item -> {
+            if (item.getProduct() != null) {
+                try {
+                    Long variantId = item.getVariant() != null ? item.getVariant().getId() : null;
+                    stockService.finalizeStockDeduction(item.getProduct().getId(), variantId, item.getQuantity(), order.getId());
+                    log.info("[STOCK-FINALIZE] Commande {} — produit id={} sku='{}' variantId={} qty={}",
+                            order.getOrderNumber(), item.getProduct().getId(), item.getProductSku(), variantId, item.getQuantity());
+                } catch (Exception e) {
+                    log.warn("Could not finalize stock for product {} in order {}: {}",
+                            item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
+                }
+            }
+        });
+    }
+
+    private void releaseReservationForOrder(Order order, String reason) {
+        order.getItems().forEach(item -> {
+            if (item.getProduct() != null) {
+                try {
+                    Long variantId = item.getVariant() != null ? item.getVariant().getId() : null;
+                    stockService.releaseReservation(item.getProduct().getId(), variantId, item.getQuantity(), order.getId(), reason);
+                    log.info("[STOCK-RELEASE] Commande {} — produit id={} sku='{}' variantId={} qty={} raison={}",
+                            order.getOrderNumber(), item.getProduct().getId(), item.getProductSku(), variantId, item.getQuantity(), reason);
+                } catch (Exception e) {
+                    log.warn("Could not release reservation for product {} in order {}: {}",
+                            item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());
+                }
             }
         });
     }
@@ -396,6 +448,8 @@ public class OrderService {
                 try {
                     Long variantId = item.getVariant() != null ? item.getVariant().getId() : null;
                     stockService.restoreStockForOrder(item.getProduct().getId(), variantId, item.getQuantity(), order.getId(), reason);
+                    log.info("[STOCK-RESTORE] Commande {} — produit id={} sku='{}' variantId={} qty={} raison={}",
+                            order.getOrderNumber(), item.getProduct().getId(), item.getProductSku(), variantId, item.getQuantity(), reason);
                 } catch (Exception e) {
                     log.warn("Could not restore stock for product {} in order {}: {}",
                             item.getProduct().getSku(), order.getOrderNumber(), e.getMessage());

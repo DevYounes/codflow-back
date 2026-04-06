@@ -103,9 +103,15 @@ public class Order extends BaseEntity {
     private LocalDateTime cancelledAt;
 
     /**
-     * True once stock has been deducted for this order (at CONFIRME).
-     * Used to guard against double-deduction and to know whether
-     * stock must be restored on RETOURNE / ANNULE / ECHEC_LIVRAISON.
+     * True quand le stock est réservé pour cette commande (entre CONFIRME et LIVRE).
+     * La réservation augmente reservedStock sans toucher currentStock.
+     */
+    @Column(name = "stock_reserved", nullable = false)
+    private boolean stockReserved = false;
+
+    /**
+     * True une fois le stock définitivement déduit (à la livraison — LIVRE).
+     * Permet de savoir si le stock doit être restauré en cas de RETOURNE après livraison.
      */
     @Column(name = "stock_deducted", nullable = false)
     private boolean stockDeducted = false;

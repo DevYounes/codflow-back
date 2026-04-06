@@ -40,9 +40,18 @@ public class Product extends BaseEntity {
     @Column(name = "current_stock", nullable = false)
     private int currentStock = 0;
 
+    /** Stock réservé par des commandes confirmées non encore livrées. */
+    @Column(name = "reserved_stock", nullable = false)
+    private int reservedStock = 0;
+
     @Column(name = "min_threshold", nullable = false)
     private int minThreshold = 10;
 
     @Column(name = "alert_enabled", nullable = false)
     private boolean alertEnabled = true;
+
+    /** Stock disponible = currentStock - reservedStock. */
+    public int getAvailableStock() {
+        return Math.max(0, currentStock - reservedStock);
+    }
 }

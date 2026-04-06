@@ -35,4 +35,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @Modifying
     @Query("UPDATE Product p SET p.currentStock = :newStock WHERE p.id = :productId")
     void updateCurrentStock(@Param("productId") Long productId, @Param("newStock") int newStock);
+
+    @Modifying
+    @Query("UPDATE Product p SET p.reservedStock = :newReserved WHERE p.id = :productId")
+    void updateReservedStock(@Param("productId") Long productId, @Param("newReserved") int newReserved);
 }

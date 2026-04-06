@@ -23,6 +23,10 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     @Query("UPDATE ProductVariant v SET v.currentStock = :newStock WHERE v.id = :variantId")
     void updateCurrentStock(@Param("variantId") Long variantId, @Param("newStock") int newStock);
 
+    @Modifying
+    @Query("UPDATE ProductVariant v SET v.reservedStock = :newReserved WHERE v.id = :variantId")
+    void updateReservedStock(@Param("variantId") Long variantId, @Param("newReserved") int newReserved);
+
     java.util.Optional<ProductVariant> findByVariantSku(String variantSku);
 
     java.util.Optional<ProductVariant> findByVariantSkuIgnoreCase(String variantSku);
