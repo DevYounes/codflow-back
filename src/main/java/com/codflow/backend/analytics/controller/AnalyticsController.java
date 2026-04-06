@@ -98,4 +98,21 @@ public class AnalyticsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return ResponseEntity.ok(ApiResponse.success(businessChargesService.getProfitSummary(from, to)));
     }
+
+    @GetMapping("/products")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+        summary = "Performance par produit",
+        description = """
+            Agrégation des ventes par produit : quantités commandées/livrées/retournées/annulées,
+            CA, coût produits, marge brute, taux de livraison, panier moyen.
+            Filtre optionnel par période (from / to).
+            Seuls les produits liés aux articles de commande sont inclus.
+            """
+    )
+    public ResponseEntity<ApiResponse<List<ProductPerformanceDto>>> getProductPerformance(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success(analyticsService.getProductPerformance(from, to)));
+    }
 }

@@ -6,6 +6,7 @@ import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.enums.OrderSource;
 import com.codflow.backend.order.enums.OrderStatus;
+import com.codflow.backend.order.repository.OrderItemRepository;
 import com.codflow.backend.order.repository.OrderRepository;
 import com.codflow.backend.product.repository.ProductRepository;
 import com.codflow.backend.security.UserPrincipal;
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
 public class AnalyticsService {
 
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final StockAlertRepository stockAlertRepository;
@@ -396,7 +398,55 @@ public class AnalyticsService {
         return map;
     }
 
+    @Transactional(readOnly = true)
+    public List<ProductPerformanceDto> getProductPerformance(LocalDate from, LocalDate to) {
+        List<Object[]> rows = (from != null && to != null)
+                ? orderItemRepository.aggregateByProductAndDateRange(
+                        from.atStartOfDay(), to.plusDays(1).atStartOfDay())
+                : orderItemRepository.aggregateByProduct();
+
+        return rows.stream().map(r -> {
+            long qtyDelivered  = toLong(r[4]);
+            long qtyReturned   = toLong(r[5]);
+            long qtyAttempted  = qtyDelivered + qtyReturned;
+            BigDecimal revenue  = toBD(r[7]);
+            BigDecimal cost     = toBD(r[8]);
+            BigDecimal margin   = revenue.subtract(cost);
+            double deliveryRate = qtyAttempted > 0
+                    ? round((double) qtyDelivered / qtyAttempted * 100)
+                    : 0;
+            BigDecimal avgOrderValue = qtyDelivered > 0
+                    ? revenue.divide(BigDecimal.valueOf(qtyDelivered), 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+
+            return ProductPerformanceDto.builder()
+                    .productId((Long) r[0])
+                    .productName((String) r[1])
+                    .productSku((String) r[2])
+                    .totalQuantityOrdered(toLong(r[3]))
+                    .quantityDelivered(qtyDelivered)
+                    .quantityReturned(qtyReturned)
+                    .quantityCancelled(toLong(r[6]))
+                    .revenue(revenue)
+                    .productCost(cost)
+                    .grossMargin(margin)
+                    .deliveryRate(deliveryRate)
+                    .avgOrderValue(avgOrderValue)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
     private double round(double value) {
         return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private long toLong(Object o) {
+        return o instanceof Number n ? n.longValue() : 0L;
+    }
+
+    private BigDecimal toBD(Object o) {
+        if (o == null) return BigDecimal.ZERO;
+        if (o instanceof BigDecimal bd) return bd;
+        return new BigDecimal(o.toString());
     }
 }
