@@ -36,9 +36,11 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -221,7 +223,12 @@ public class OrderService {
         order.setExternalRef(request.getExternalRef());
 
         if (request.getItems() != null && !request.getItems().isEmpty()) {
+            // Snapshot des anciens articles avant modification (pour ajuster les réservations)
+            List<OrderItem> oldItems = order.isStockReserved()
+                    ? new ArrayList<>(order.getItems()) : List.of();
+
             order.getItems().clear();
+            List<OrderItem> newItems = new ArrayList<>();
             for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
                 OrderItem item = new OrderItem();
                 item.setProductName(itemReq.getProductName());
@@ -241,8 +248,14 @@ public class OrderService {
                 }
                 item.calculateTotalPrice();
                 order.addItem(item);
+                newItems.add(item);
             }
             order.recalculateTotals();
+
+            // Ajuster les réservations de stock si la commande est confirmée
+            if (order.isStockReserved()) {
+                adjustStockReservations(order, oldItems, newItems);
+            }
         }
 
         return toDto(orderRepository.save(order), true);
@@ -456,6 +469,66 @@ public class OrderService {
                 }
             }
         });
+    }
+
+    /**
+     * Ajuste les réservations de stock lors de la modification d'une commande confirmée.
+     * Clé de comparaison : (productId, variantId).
+     * - Article supprimé ou quantité réduite → libère la réservation du delta
+     * - Article ajouté ou quantité augmentée → réserve le delta
+     * - Variante changée → libère l'ancienne, réserve la nouvelle
+     */
+    private void adjustStockReservations(Order order, List<OrderItem> oldItems, List<OrderItem> newItems) {
+        record StockKey(Long productId, Long variantId) {}
+
+        Map<StockKey, Integer> oldQty = new HashMap<>();
+        for (OrderItem item : oldItems) {
+            if (item.getProduct() != null) {
+                StockKey key = new StockKey(item.getProduct().getId(),
+                        item.getVariant() != null ? item.getVariant().getId() : null);
+                oldQty.merge(key, item.getQuantity(), Integer::sum);
+            }
+        }
+
+        Map<StockKey, Integer> newQty = new HashMap<>();
+        for (OrderItem item : newItems) {
+            if (item.getProduct() != null) {
+                StockKey key = new StockKey(item.getProduct().getId(),
+                        item.getVariant() != null ? item.getVariant().getId() : null);
+                newQty.merge(key, item.getQuantity(), Integer::sum);
+            }
+        }
+
+        // Libérer le delta pour les articles supprimés ou réduits
+        for (Map.Entry<StockKey, Integer> entry : oldQty.entrySet()) {
+            StockKey key = entry.getKey();
+            int delta = entry.getValue() - newQty.getOrDefault(key, 0);
+            if (delta > 0) {
+                try {
+                    stockService.releaseReservation(key.productId(), key.variantId(), delta, order.getId(),
+                            "Modification commande confirmée");
+                    log.info("[STOCK-ADJUST] Commande {} — libération {} unité(s) produit={} variant={}",
+                            order.getOrderNumber(), delta, key.productId(), key.variantId());
+                } catch (Exception e) {
+                    log.warn("Could not release reservation on order update {}: {}", order.getOrderNumber(), e.getMessage());
+                }
+            }
+        }
+
+        // Réserver le delta pour les articles ajoutés ou augmentés
+        for (Map.Entry<StockKey, Integer> entry : newQty.entrySet()) {
+            StockKey key = entry.getKey();
+            int delta = entry.getValue() - oldQty.getOrDefault(key, 0);
+            if (delta > 0) {
+                try {
+                    stockService.reserveStockForOrder(key.productId(), key.variantId(), delta, order.getId());
+                    log.info("[STOCK-ADJUST] Commande {} — réservation {} unité(s) produit={} variant={}",
+                            order.getOrderNumber(), delta, key.productId(), key.variantId());
+                } catch (Exception e) {
+                    log.warn("Could not reserve stock on order update {}: {}", order.getOrderNumber(), e.getMessage());
+                }
+            }
+        }
     }
 
     @Transactional(readOnly = true)
