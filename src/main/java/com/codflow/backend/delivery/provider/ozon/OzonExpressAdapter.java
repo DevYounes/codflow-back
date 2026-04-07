@@ -86,7 +86,7 @@ public class OzonExpressAdapter implements DeliveryProviderAdapter {
             form.add("parcel-stock",    "0");   // 0 = ramassage (pickup by Ozon)
             form.add("parcel-open",     "1");   // allow opening by default
             if (request.isExchange()) {
-                form.add("parcel-echange", "1"); // échange : le livreur reprend l'ancien colis
+                form.add("parcel-replace", "1"); // échange : le livreur reprend l'ancien colis
             }
 
             if (request.getNotes() != null && !request.getNotes().isBlank()) {
