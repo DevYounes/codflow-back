@@ -100,7 +100,7 @@ public class DeliveryController {
     // =========================================================================
 
     @GetMapping("/returns")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(
         summary = "Colis en attente de retour physique",
         description = """
@@ -115,7 +115,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/shipments/{id}/confirm-return")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(
         summary = "Confirmer la réception physique d'un colis retourné",
         description = """
