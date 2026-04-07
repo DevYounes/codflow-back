@@ -61,6 +61,18 @@ public class DeliveryShipment extends BaseEntity {
     @Column(name = "returned_at")
     private LocalDateTime returnedAt;
 
+    /** True quand le marchand a physiquement reçu le colis retourné. */
+    @Column(name = "return_received", nullable = false)
+    private boolean returnReceived = false;
+
+    /** Date de confirmation de réception physique du retour. */
+    @Column(name = "return_received_at")
+    private LocalDateTime returnReceivedAt;
+
+    /** Notes optionnelles lors de la confirmation de retour. */
+    @Column(name = "return_received_notes", length = 500)
+    private String returnReceivedNotes;
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

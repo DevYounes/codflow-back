@@ -1,10 +1,12 @@
 package com.codflow.backend.delivery.controller;
 
 import com.codflow.backend.common.dto.ApiResponse;
+import com.codflow.backend.delivery.dto.ConfirmReturnRequest;
 import com.codflow.backend.delivery.dto.CreateDeliveryNoteRequest;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
 import com.codflow.backend.delivery.dto.DeliveryNoteDto;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
+import com.codflow.backend.delivery.dto.PendingReturnDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
 import com.codflow.backend.delivery.dto.UpdateProviderConfigRequest;
 import com.codflow.backend.delivery.service.DeliveryNoteService;
@@ -91,6 +93,42 @@ public class DeliveryController {
     @Operation(summary = "Synchroniser le suivi d'un envoi")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> syncTracking(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success("Suivi mis à jour", deliveryService.syncTracking(id)));
+    }
+
+    // =========================================================================
+    // Suivi des retours physiques
+    // =========================================================================
+
+    @GetMapping("/returns")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+        summary = "Colis en attente de retour physique",
+        description = """
+            Liste tous les colis refusés / en échec de livraison / annulés dont
+            le retour physique n'a pas encore été confirmé par le marchand.
+            Chaque entrée indique le nombre de jours d'attente et un flag 'overdue'
+            si > 7 jours (risque que le transporteur ne retourne pas le colis).
+            """
+    )
+    public ResponseEntity<ApiResponse<List<PendingReturnDto>>> getPendingReturns() {
+        return ResponseEntity.ok(ApiResponse.success(deliveryService.getPendingReturns()));
+    }
+
+    @PostMapping("/shipments/{id}/confirm-return")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+        summary = "Confirmer la réception physique d'un colis retourné",
+        description = """
+            Marque le colis comme physiquement reçu en retour par le marchand.
+            Applicable aux colis en statut FAILED_DELIVERY, RETURNED ou CANCELLED.
+            Optionnel : ajouter des notes (état du colis, remarques...).
+            """
+    )
+    public ResponseEntity<ApiResponse<DeliveryShipmentDto>> confirmReturn(
+            @PathVariable Long id,
+            @RequestBody(required = false) ConfirmReturnRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Retour confirmé", deliveryService.confirmReturnReceived(id, request)));
     }
 
     @PostMapping("/shipments/repair-fees")

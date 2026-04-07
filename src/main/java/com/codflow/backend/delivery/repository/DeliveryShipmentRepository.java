@@ -28,6 +28,18 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
            "('DELIVERED', 'RETURNED', 'CANCELLED') AND s.trackingNumber IS NOT NULL")
     List<DeliveryShipment> findActiveShipments();
 
+    /**
+     * Colis en attente de retour physique :
+     * - statut FAILED_DELIVERY (refusé/échec) : le transporteur doit ramener le colis
+     * - statut RETURNED : le transporteur dit qu'il a retourné, mais pas encore confirmé reçu par le marchand
+     * - statut CANCELLED : annulé après expédition, retour attendu
+     * Tous filtrés sur return_received = false.
+     */
+    @Query("SELECT s FROM DeliveryShipment s WHERE s.status IN " +
+           "('FAILED_DELIVERY', 'RETURNED', 'CANCELLED') AND s.returnReceived = false " +
+           "ORDER BY s.updatedAt ASC")
+    List<DeliveryShipment> findPendingReturns();
+
     Page<DeliveryShipment> findByProviderId(Long providerId, Pageable pageable);
 
     long countByStatus(ShipmentStatus status);

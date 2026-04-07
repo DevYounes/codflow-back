@@ -27,6 +27,9 @@ public class DeliveryShipmentDto {
     private LocalDateTime outForDeliveryAt;
     private LocalDateTime deliveredAt;
     private LocalDateTime returnedAt;
+    private boolean returnReceived;
+    private LocalDateTime returnReceivedAt;
+    private String returnReceivedNotes;
     private String notes;
     private BigDecimal deliveredPrice;
     private BigDecimal returnedPrice;

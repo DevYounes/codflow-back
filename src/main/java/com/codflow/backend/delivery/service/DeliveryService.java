@@ -2,8 +2,10 @@ package com.codflow.backend.delivery.service;
 
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
+import com.codflow.backend.delivery.dto.ConfirmReturnRequest;
 import com.codflow.backend.delivery.dto.CreateShipmentRequest;
 import com.codflow.backend.delivery.dto.DeliveryShipmentDto;
+import com.codflow.backend.delivery.dto.PendingReturnDto;
 import com.codflow.backend.delivery.dto.RequestPickupDto;
 import com.codflow.backend.delivery.entity.DeliveryProviderConfig;
 import com.codflow.backend.delivery.entity.DeliveryShipment;
@@ -32,6 +34,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -369,6 +372,100 @@ public class DeliveryService {
         return repaired;
     }
 
+    // =========================================================================
+    // Suivi des retours physiques
+    // =========================================================================
+
+    /** Seuil en jours au-delà duquel un retour non confirmé est considéré "en retard". */
+    private static final int OVERDUE_DAYS = 7;
+
+    /**
+     * Retourne tous les colis dont le retour physique n'a pas encore été confirmé.
+     * Statuts concernés : FAILED_DELIVERY (refusé), RETURNED (le transporteur dit retourné),
+     * CANCELLED (annulé après expédition).
+     */
+    @Transactional(readOnly = true)
+    public List<PendingReturnDto> getPendingReturns() {
+        return shipmentRepository.findPendingReturns().stream()
+                .map(this::toPendingReturnDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Confirme la réception physique du colis retourné par le marchand.
+     * Met returnReceived = true et stocke la date + notes optionnelles.
+     */
+    @Transactional
+    public DeliveryShipmentDto confirmReturnReceived(Long shipmentId, ConfirmReturnRequest request) {
+        DeliveryShipment shipment = shipmentRepository.findById(shipmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Colis", shipmentId));
+
+        if (shipment.isReturnReceived()) {
+            throw new BusinessException("Le retour de ce colis a déjà été confirmé");
+        }
+
+        List<ShipmentStatus> returnableStatuses = List.of(
+                ShipmentStatus.FAILED_DELIVERY, ShipmentStatus.RETURNED, ShipmentStatus.CANCELLED);
+        if (!returnableStatuses.contains(shipment.getStatus())) {
+            throw new BusinessException(
+                    "Ce colis n'est pas en état de retour (statut actuel: " + shipment.getStatus().getLabel() + ")");
+        }
+
+        shipment.setReturnReceived(true);
+        shipment.setReturnReceivedAt(LocalDateTime.now());
+        if (request != null && request.getNotes() != null) {
+            shipment.setReturnReceivedNotes(request.getNotes());
+        }
+
+        log.info("[RETOUR CONFIRMÉ] Colis {} (commande {}) — reçu physiquement",
+                shipment.getTrackingNumber(), shipment.getOrder().getOrderNumber());
+        return toDto(shipmentRepository.save(shipment), false);
+    }
+
+    /**
+     * Vérification quotidienne à 8h00 — alerte si des retours sont en attente depuis trop longtemps.
+     * Permet de détecter les colis refusés/annulés que le transporteur ne retourne pas.
+     */
+    @Scheduled(cron = "0 0 8 * * *")
+    public void checkOverdueReturns() {
+        List<PendingReturnDto> overdue = getPendingReturns().stream()
+                .filter(PendingReturnDto::isOverdue)
+                .collect(Collectors.toList());
+
+        if (!overdue.isEmpty()) {
+            log.warn("[RETOUR EN RETARD] {} colis sans confirmation de retour depuis plus de {} jours :",
+                    overdue.size(), OVERDUE_DAYS);
+            overdue.forEach(r -> log.warn("  ⚠ {} | Commande {} | {} | {} jours | Statut: {}",
+                    r.getTrackingNumber(), r.getOrderNumber(), r.getCustomerName(),
+                    r.getDaysPending(), r.getStatusLabel()));
+        } else {
+            log.debug("[RETOUR] Aucun retour en retard détecté");
+        }
+    }
+
+    private PendingReturnDto toPendingReturnDto(DeliveryShipment s) {
+        LocalDateTime changedAt = s.getReturnedAt() != null ? s.getReturnedAt() : s.getUpdatedAt();
+        long days = ChronoUnit.DAYS.between(changedAt, LocalDateTime.now());
+        return PendingReturnDto.builder()
+                .shipmentId(s.getId())
+                .trackingNumber(s.getTrackingNumber())
+                .orderId(s.getOrder().getId())
+                .orderNumber(s.getOrder().getOrderNumber())
+                .customerName(s.getOrder().getCustomerName())
+                .customerPhone(s.getOrder().getCustomerPhone())
+                .city(s.getOrder().getCity())
+                .status(s.getStatus())
+                .statusLabel(s.getProviderStatusLabel() != null
+                        ? s.getProviderStatusLabel() : s.getStatus().getLabel())
+                .providerStatusLabel(s.getProviderStatusLabel())
+                .statusChangedAt(changedAt)
+                .daysPending(days)
+                .overdue(days >= OVERDUE_DAYS)
+                .appliedFee(s.getAppliedFee())
+                .appliedFeeType(s.getAppliedFeeType())
+                .build();
+    }
+
     private ShipmentStatus mapProviderStatus(String providerStatus) {
         if (providerStatus == null) return null;
         return switch (providerStatus.toLowerCase()) {
@@ -444,6 +541,9 @@ public class DeliveryService {
                 .outForDeliveryAt(shipment.getOutForDeliveryAt())
                 .deliveredAt(shipment.getDeliveredAt())
                 .returnedAt(shipment.getReturnedAt())
+                .returnReceived(shipment.isReturnReceived())
+                .returnReceivedAt(shipment.getReturnReceivedAt())
+                .returnReceivedNotes(shipment.getReturnReceivedNotes())
                 .notes(shipment.getNotes())
                 .deliveredPrice(shipment.getDeliveredPrice())
                 .returnedPrice(shipment.getReturnedPrice())
