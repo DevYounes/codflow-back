@@ -46,8 +46,13 @@ public class AnalyticsController {
     public ResponseEntity<ApiResponse<KpiSummaryDto>> getSummary(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        // Si un seul paramètre est fourni, on complète avec une borne implicite.
+        // from sans to → jusqu'à la fin d'aujourd'hui
+        // to sans from → depuis le début des temps (no lower bound → null)
         LocalDateTime fromDt = from != null ? from.atStartOfDay() : null;
-        LocalDateTime toDt   = to   != null ? to.plusDays(1).atStartOfDay() : null;
+        LocalDateTime toDt   = from != null || to != null
+                ? (to != null ? to.plusDays(1).atStartOfDay() : LocalDateTime.now())
+                : null;
         return ResponseEntity.ok(ApiResponse.success(analyticsService.getSummary(fromDt, toDt)));
     }
 

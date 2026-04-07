@@ -47,11 +47,14 @@ public class AnalyticsService {
         LocalDateTime weekStart  = LocalDate.now().minusDays(7).atStartOfDay();
         LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
 
-        boolean filtered = from != null && to != null;
+        boolean filtered = from != null || to != null;
+        // Normalise les bornes : si l'une est absente on utilise une borne ouverte cohérente
+        LocalDateTime effectiveFrom = from != null ? from : LocalDateTime.of(2000, 1, 1, 0, 0);
+        LocalDateTime effectiveTo   = to   != null ? to   : now;
 
         // Counts — filtered by date range if provided
         long totalOrders = filtered
-                ? orderRepository.countByDateRange(from, to)
+                ? orderRepository.countByDateRange(effectiveFrom, effectiveTo)
                 : orderRepository.count();
 
         // todayOrders / weekOrders / monthOrders = toujours relatifs à aujourd'hui
@@ -60,25 +63,25 @@ public class AnalyticsService {
         long monthOrders  = orderRepository.countByDateRange(monthStart, now);
 
         long confirmedOrders = filtered
-                ? orderRepository.countByStatusesAndDateRange(CONFIRMED_PIPELINE_STATUSES, from, to)
+                ? orderRepository.countByStatusesAndDateRange(CONFIRMED_PIPELINE_STATUSES, effectiveFrom, effectiveTo)
                 : orderRepository.countByStatuses(CONFIRMED_PIPELINE_STATUSES);
-        long cancelledOrders = filtered ? countCancelledFiltered(from, to) : countCancelled();
+        long cancelledOrders = filtered ? countCancelledFiltered(effectiveFrom, effectiveTo) : countCancelled();
         long doublonOrders   = filtered
-                ? orderRepository.countByStatusAndDateRange(OrderStatus.DOUBLON, from, to)
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.DOUBLON, effectiveFrom, effectiveTo)
                 : orderRepository.countByStatus(OrderStatus.DOUBLON);
-        long pendingOrders   = filtered ? countPendingFiltered(from, to) : countPending();
+        long pendingOrders   = filtered ? countPendingFiltered(effectiveFrom, effectiveTo) : countPending();
         long deliveredOrders = filtered
-                ? orderRepository.countByStatusAndDateRange(OrderStatus.LIVRE, from, to)
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.LIVRE, effectiveFrom, effectiveTo)
                 : orderRepository.countByStatus(OrderStatus.LIVRE);
         long inDeliveryOrders = filtered
-                ? orderRepository.countByStatusAndDateRange(OrderStatus.EN_LIVRAISON, from, to)
-                  + orderRepository.countByStatusAndDateRange(OrderStatus.ENVOYE, from, to)
-                  + orderRepository.countByStatusAndDateRange(OrderStatus.EN_PREPARATION, from, to)
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.EN_LIVRAISON, effectiveFrom, effectiveTo)
+                  + orderRepository.countByStatusAndDateRange(OrderStatus.ENVOYE, effectiveFrom, effectiveTo)
+                  + orderRepository.countByStatusAndDateRange(OrderStatus.EN_PREPARATION, effectiveFrom, effectiveTo)
                 : orderRepository.countByStatus(OrderStatus.EN_LIVRAISON)
                   + orderRepository.countByStatus(OrderStatus.ENVOYE)
                   + orderRepository.countByStatus(OrderStatus.EN_PREPARATION);
         long returnedOrders = filtered
-                ? orderRepository.countByStatusAndDateRange(OrderStatus.RETOURNE, from, to)
+                ? orderRepository.countByStatusAndDateRange(OrderStatus.RETOURNE, effectiveFrom, effectiveTo)
                 : orderRepository.countByStatus(OrderStatus.RETOURNE);
 
         // Rates
@@ -90,7 +93,7 @@ public class AnalyticsService {
 
         // Status breakdown
         Map<String, Long> ordersByStatus = (filtered
-                ? orderRepository.countGroupByStatusAndDateRange(from, to)
+                ? orderRepository.countGroupByStatusAndDateRange(effectiveFrom, effectiveTo)
                 : orderRepository.countGroupByStatus())
                 .stream().collect(Collectors.toMap(
                         row -> ((OrderStatus) row[0]).getLabel(),
@@ -99,7 +102,7 @@ public class AnalyticsService {
 
         // Source breakdown
         Map<String, Long> ordersBySource = (filtered
-                ? orderRepository.countGroupBySourceAndDateRange(from, to)
+                ? orderRepository.countGroupBySourceAndDateRange(effectiveFrom, effectiveTo)
                 : orderRepository.countGroupBySource())
                 .stream().collect(Collectors.toMap(
                         row -> ((OrderSource) row[0]).name(),
@@ -108,13 +111,13 @@ public class AnalyticsService {
 
         // Revenue
         BigDecimal totalRevenue = filtered
-                ? orderRepository.sumRevenueByStatusAndDateRange(OrderStatus.LIVRE, from, to)
+                ? orderRepository.sumRevenueByStatusAndDateRange(OrderStatus.LIVRE, effectiveFrom, effectiveTo)
                 : calculateRevenue(OrderStatus.LIVRE);
         BigDecimal confirmedRevenue = filtered
-                ? orderRepository.sumRevenueByStatusAndDateRange(OrderStatus.CONFIRME, from, to)
+                ? orderRepository.sumRevenueByStatusAndDateRange(OrderStatus.CONFIRME, effectiveFrom, effectiveTo)
                 : calculateRevenue(OrderStatus.CONFIRME);
         BigDecimal avgOrderValue = filtered
-                ? orderRepository.avgOrderValueByDateRange(from, to)
+                ? orderRepository.avgOrderValueByDateRange(effectiveFrom, effectiveTo)
                 : calculateAverageOrderValue();
 
         // Stock (pas de filtre par date — c'est l'état actuel du stock)
@@ -124,7 +127,7 @@ public class AnalyticsService {
 
         // Daily trend — sur la plage filtrée ou les 7 derniers jours
         List<DailyStatsDto> dailyTrend = filtered
-                ? getDailyTrendBetween(from, to)
+                ? getDailyTrendBetween(effectiveFrom, effectiveTo)
                 : getDailyTrend(7);
 
         return KpiSummaryDto.builder()
