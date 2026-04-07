@@ -171,7 +171,8 @@ public class OrderService {
         exchange.setAddress(firstNonBlank(request.getAddress(), sourceOrder.getAddress()));
         exchange.setVille(firstNonBlank(request.getVille(), sourceOrder.getVille()));
         exchange.setCity(firstNonBlank(request.getCity(), sourceOrder.getCity()));
-        exchange.setDeliveryCityId(sourceOrder.getDeliveryCityId()); // conserver l'ID ville Ozon
+        exchange.setDeliveryCityId(request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()
+                ? request.getDeliveryCityId() : sourceOrder.getDeliveryCityId());
         exchange.setZipCode(request.getZipCode() != null ? request.getZipCode() : sourceOrder.getZipCode());
         exchange.setNotes(request.getNotes());
         exchange.setShippingCost(request.getShippingCost() != null
@@ -187,6 +188,12 @@ public class OrderService {
 
         // Lier au customer existant
         exchange.setCustomer(sourceOrder.getCustomer());
+
+        // Assignation : request.assignedToId > créateur (principal) > assigné de la commande source
+        Long assignedToId = request.getAssignedToId() != null
+                ? request.getAssignedToId()
+                : principal.getId();
+        userRepository.findById(assignedToId).ifPresent(exchange::setAssignedTo);
 
         // Articles du nouvel échange
         for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {

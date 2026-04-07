@@ -42,6 +42,9 @@ public class CreateOrderRequest {
     private String shopifyOrderId;
     private String externalRef;
 
+    private Long assignedToId;
+    private String deliveryCityId;
+
     @NotEmpty(message = "La commande doit contenir au moins un article")
     @Valid
     private List<OrderItemRequest> items;
