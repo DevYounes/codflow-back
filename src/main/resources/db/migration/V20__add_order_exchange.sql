@@ -5,7 +5,7 @@
 -- qu'il s'agit d'un échange (parcel-echange=1) et non d'un nouveau colis.
 
 ALTER TABLE orders
-    ADD COLUMN is_exchange       BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN source_order_id   BIGINT  REFERENCES orders(id);
+    ADD COLUMN IF NOT EXISTS is_exchange       BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS source_order_id   BIGINT  REFERENCES orders(id);
 
-CREATE INDEX idx_orders_source ON orders (source_order_id) WHERE source_order_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_source ON orders (source_order_id) WHERE source_order_id IS NOT NULL;
