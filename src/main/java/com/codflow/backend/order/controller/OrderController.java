@@ -124,4 +124,27 @@ public class OrderController {
         orderService.bulkAssignOrders(request, principal);
         return ResponseEntity.ok(ApiResponse.success("Commandes assignées avec succès"));
     }
+
+    @PostMapping("/{id}/exchange")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+        summary = "Créer une commande d'échange depuis une commande livrée",
+        description = """
+            Crée une nouvelle commande d'échange à partir d'une commande livrée (LIVRE).
+            - Copie automatiquement le client, l'adresse et la ville de la commande source
+            - Les articles sont le nouveau produit envoyé en échange (obligatoire)
+            - La commande démarre directement en statut CONFIRME
+            - Le flag is_exchange=true est envoyé à Ozon Express (parcel-echange=1)
+              afin que le livreur sache qu'il doit reprendre l'ancien colis
+            - Le stock du nouveau produit est réservé immédiatement
+            """
+    )
+    public ResponseEntity<ApiResponse<OrderDto>> createExchangeOrder(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateOrderRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Commande d'échange créée avec succès",
+                        orderService.createExchangeOrder(id, request, principal)));
+    }
 }

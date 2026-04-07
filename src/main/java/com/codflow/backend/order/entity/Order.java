@@ -123,6 +123,15 @@ public class Order extends BaseEntity {
     @Column(name = "external_ref", length = 100)
     private String externalRef;
 
+    /** True si cette commande est un échange issu d'une commande livrée. */
+    @Column(name = "is_exchange", nullable = false)
+    private boolean isExchange = false;
+
+    /** Commande d'origine dont cet échange est issu (null si pas un échange). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_order_id")
+    private Order sourceOrder;
+
     // Items
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<OrderItem> items = new ArrayList<>();

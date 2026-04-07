@@ -24,6 +24,8 @@ public class ShipmentRequest {
     private String notes;
     private List<ShipmentItemRequest> items;
     private int totalWeight;  // grams
+    /** True si ce colis est un échange (parcel-echange=1 chez Ozon Express). */
+    private boolean exchange;
 
     @Getter
     @Builder

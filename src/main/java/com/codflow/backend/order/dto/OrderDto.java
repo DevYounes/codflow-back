@@ -41,6 +41,9 @@ public class OrderDto {
     private LocalDateTime confirmedAt;
     private LocalDateTime cancelledAt;
     private String shopifyOrderId;
+    private boolean isExchange;
+    private Long sourceOrderId;
+    private String sourceOrderNumber;
     private List<OrderItemDto> items;
     private List<OrderStatusHistoryDto> statusHistory;
     private LocalDateTime createdAt;

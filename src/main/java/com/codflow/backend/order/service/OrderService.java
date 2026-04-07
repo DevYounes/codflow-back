@@ -132,6 +132,109 @@ public class OrderService {
         return toDto(saved, true);
     }
 
+    /**
+     * Crée une commande d'échange à partir d'une commande livrée.
+     *
+     * Comportement :
+     * - Copie le client, l'adresse, la ville et le deliveryCityId de la commande source
+     * - Les articles sont fournis dans la requête (nouveau produit à envoyer)
+     * - La commande est créée directement en statut CONFIRME (échange déjà validé par le client)
+     * - Le flag isExchange = true est transmis à la société de livraison (parcel-echange=1 chez Ozon)
+     * - Le stock est réservé immédiatement
+     */
+    @Transactional
+    public OrderDto createExchangeOrder(Long sourceOrderId, CreateOrderRequest request, UserPrincipal principal) {
+        Order sourceOrder = getOrderById(sourceOrderId);
+
+        if (sourceOrder.getStatus() != OrderStatus.LIVRE) {
+            throw new BusinessException(
+                    "L'échange ne peut être créé que pour une commande livrée (statut actuel: "
+                    + sourceOrder.getStatus().getLabel() + ")");
+        }
+
+        // Construire la commande d'échange en copiant les infos client de la source
+        Order exchange = new Order();
+        exchange.setSource(OrderSource.MANUAL);
+        exchange.setExchange(true);
+        exchange.setSourceOrder(sourceOrder);
+
+        // Client — peut être surchargé par la requête mais par défaut = même client
+        exchange.setCustomerName(firstNonBlank(request.getCustomerName(), sourceOrder.getCustomerName()));
+        String rawPhone = firstNonBlank(request.getCustomerPhone(), sourceOrder.getCustomerPhone());
+        String normalizedPhone = com.codflow.backend.common.util.PhoneNormalizer.normalize(rawPhone);
+        exchange.setCustomerPhone(rawPhone);
+        exchange.setCustomerPhoneNormalized(normalizedPhone);
+        exchange.setCustomerPhone2(request.getCustomerPhone2() != null
+                ? request.getCustomerPhone2() : sourceOrder.getCustomerPhone2());
+
+        // Adresse — par défaut = même adresse
+        exchange.setAddress(firstNonBlank(request.getAddress(), sourceOrder.getAddress()));
+        exchange.setVille(firstNonBlank(request.getVille(), sourceOrder.getVille()));
+        exchange.setCity(firstNonBlank(request.getCity(), sourceOrder.getCity()));
+        exchange.setDeliveryCityId(sourceOrder.getDeliveryCityId()); // conserver l'ID ville Ozon
+        exchange.setZipCode(request.getZipCode() != null ? request.getZipCode() : sourceOrder.getZipCode());
+        exchange.setNotes(request.getNotes());
+        exchange.setShippingCost(request.getShippingCost() != null
+                ? request.getShippingCost() : java.math.BigDecimal.ZERO);
+
+        // Numéro de commande
+        String exchangeNumber = "ECHANGE-" + sourceOrder.getOrderNumber();
+        if (orderRepository.existsByOrderNumber(exchangeNumber)) {
+            exchangeNumber = "ECHANGE-" + sourceOrder.getOrderNumber() + "-"
+                    + java.util.UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+        }
+        exchange.setOrderNumber(exchangeNumber);
+
+        // Lier au customer existant
+        exchange.setCustomer(sourceOrder.getCustomer());
+
+        // Articles du nouvel échange
+        for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
+            OrderItem item = new OrderItem();
+            item.setProductName(itemReq.getProductName());
+            item.setProductSku(itemReq.getProductSku());
+            item.setQuantity(itemReq.getQuantity());
+            item.setUnitPrice(itemReq.getUnitPrice());
+            if (itemReq.getProductId() != null) {
+                productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
+            }
+            if (itemReq.getVariantId() != null) {
+                productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
+                    item.setVariant(v);
+                    if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
+                        item.setUnitPrice(v.getPriceOverride());
+                    }
+                });
+            }
+            item.calculateTotalPrice();
+            exchange.addItem(item);
+        }
+        exchange.recalculateTotals();
+
+        // Démarrer directement en CONFIRME (échange déjà validé)
+        exchange.setStatus(OrderStatus.CONFIRME);
+        exchange.setConfirmedAt(LocalDateTime.now());
+
+        Order saved = orderRepository.save(exchange);
+
+        // Historique : NOUVEAU → CONFIRME
+        recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Échange créé depuis commande " + sourceOrder.getOrderNumber());
+        recordStatusChange(saved, OrderStatus.NOUVEAU, OrderStatus.CONFIRME, principal, "Échange confirmé automatiquement");
+
+        // Snapshot coûts + réservation stock
+        snapshotUnitCosts(saved);
+        reserveStockForOrder(saved);
+        saved.setStockReserved(true);
+        orderRepository.save(saved);
+
+        log.info("Exchange order created: {} from source {} (exchange=true)", saved.getOrderNumber(), sourceOrder.getOrderNumber());
+        return toDto(saved, true);
+    }
+
+    private String firstNonBlank(String a, String b) {
+        return (a != null && !a.isBlank()) ? a : b;
+    }
+
     @Transactional
     public OrderDto updateStatus(Long orderId, UpdateOrderStatusRequest request, UserPrincipal principal) {
         Order order = getOrderById(orderId);
@@ -638,6 +741,10 @@ public class OrderService {
                 .confirmedAt(order.getConfirmedAt())
                 .cancelledAt(order.getCancelledAt())
                 .shopifyOrderId(order.getShopifyOrderId())
+                .isExchange(order.isExchange())
+                .sourceOrderId(order.getSourceOrder() != null ? order.getSourceOrder().getId() : null)
+                .sourceOrderNumber(order.getSourceOrder() != null ? order.getSourceOrder().getOrderNumber() : null)
+
                 .items(items)
                 .statusHistory(history)
                 .createdAt(order.getCreatedAt())

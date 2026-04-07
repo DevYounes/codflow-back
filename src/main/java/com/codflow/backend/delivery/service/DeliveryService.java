@@ -507,6 +507,7 @@ public class DeliveryService {
                 .shippingCost(order.getShippingCost())
                 .notes(order.getNotes())
                 .items(items)
+                .exchange(order.isExchange())
                 .build();
     }
 
