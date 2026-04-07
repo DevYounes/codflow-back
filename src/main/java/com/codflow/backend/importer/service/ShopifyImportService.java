@@ -21,6 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.util.retry.Retry;
+
+import java.time.Duration;
 
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
@@ -285,6 +288,11 @@ public class ShopifyImportService {
                     .header("X-Shopify-Access-Token", token)
                     .retrieve()
                     .bodyToMono(String.class)
+                    // Retry jusqu'à 3 fois sur erreurs réseau transitoires (Connection reset, timeout…)
+                    // avec backoff exponentiel : 2s, 4s, 8s
+                    .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                            .filter(ex -> !(ex instanceof WebClientResponseException))
+                            .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
                     .block();
 
             if (body == null || body.isBlank()) {
@@ -310,7 +318,9 @@ public class ShopifyImportService {
             log.error("Shopify API HTTP error: {} — body: {}", e.getStatusCode(), e.getResponseBodyAsString());
             return null;
         } catch (Exception e) {
-            log.error("Failed to fetch Shopify orders: {} — {}", e.getClass().getSimpleName(), e.getMessage());
+            // Connection reset / timeout sont des erreurs réseau transitoires → WARN
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            log.warn("Shopify sync: erreur réseau transitoire (sera retenté au prochain cycle) — {}", msg);
             return null;
         }
     }
