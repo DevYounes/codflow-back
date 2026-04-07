@@ -126,7 +126,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/exchange")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(
         summary = "Créer une commande d'échange depuis une commande livrée",
         description = """
