@@ -323,11 +323,26 @@ public class ShopifyImportService {
                     .uri(url)
                     .header("X-Shopify-Access-Token", token)
                     .retrieve()
+                    // Handle 429 Too Many Requests — Shopify rate limit
+                    .onStatus(status -> status.value() == 429, response -> {
+                        String retryAfter = response.headers().asHttpHeaders()
+                                .getFirst("Retry-After");
+                        long waitSeconds = 10; // default if header absent
+                        if (retryAfter != null) {
+                            try { waitSeconds = Long.parseLong(retryAfter.trim()); } catch (NumberFormatException ignored) {}
+                        }
+                        log.warn("Shopify rate limit (429) — attente {}s avant de réessayer.", waitSeconds);
+                        long waitMs = waitSeconds * 1000L;
+                        try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        return reactor.core.publisher.Mono.error(
+                                new WebClientResponseException(429, "Too Many Requests", null, null, null));
+                    })
                     .bodyToMono(String.class)
-                    // Retry jusqu'à 3 fois sur erreurs réseau transitoires (Connection reset, timeout…)
-                    // avec backoff exponentiel : 2s, 4s, 8s
-                    .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
-                            .filter(ex -> !(ex instanceof WebClientResponseException))
+                    // Retry jusqu'à 5 fois sur erreurs réseau transitoires (Connection reset, timeout, 429…)
+                    // avec backoff exponentiel : 2s, 4s, 8s, 16s, 32s
+                    .retryWhen(Retry.backoff(5, Duration.ofSeconds(2))
+                            .filter(ex -> !(ex instanceof WebClientResponseException wce)
+                                    || wce.getStatusCode().value() == 429)
                             .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
                     .block();
 
@@ -354,7 +369,7 @@ public class ShopifyImportService {
             log.error("Shopify API HTTP error: {} — body: {}", e.getStatusCode(), e.getResponseBodyAsString());
             return null;
         } catch (Exception e) {
-            // Connection reset / timeout sont des erreurs réseau transitoires → WARN
+            // Connection reset / timeout — erreur réseau transitoire
             String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             log.warn("Shopify sync: erreur réseau transitoire (sera retenté au prochain cycle) — {}", msg);
             return null;
