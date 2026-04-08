@@ -228,7 +228,13 @@ public class ShopifyImportService {
         List<String> skipped = new ArrayList<>();
         int imported  = 0;
         int totalRows = 0;
+        // maxOrderId is used only for pagination within this run
         long maxOrderId = sinceId;
+        // maxSuccessId tracks the highest ID that was successfully imported or skipped —
+        // this is the cursor we save to DB so failed orders are retried next run
+        long maxSuccessId = sinceId;
+        // minFailedId tracks the lowest ID that errored — we must not advance past it
+        long minFailedId = Long.MAX_VALUE;
 
         // Shopify paginates via since_id — fetch all pages
         long pageSinceId = sinceId;
@@ -250,26 +256,40 @@ public class ShopifyImportService {
                     String shopifyOrderName = order.path("name").asText(); // e.g. "#1001"
                     if (orderRepository.existsByShopifyOrderId(String.valueOf(shopifyId))) {
                         skipped.add(shopifyOrderName + " déjà importée");
+                        // Already in DB — safe to advance cursor past it
+                        if (shopifyId > maxSuccessId) maxSuccessId = shopifyId;
                         continue;
                     }
                     CreateOrderRequest request = parseShopifyOrder(order);
                     orderService.createOrder(request, null);
                     imported++;
+                    if (shopifyId > maxSuccessId) maxSuccessId = shopifyId;
                 } catch (Exception e) {
                     errors.add("Commande Shopify #" + shopifyId + ": " + e.getMessage());
                     log.warn("Shopify import error for order {}: {}", shopifyId, e.getMessage());
+                    // Track lowest failed ID — we must not advance the cursor past it
+                    if (shopifyId < minFailedId) minFailedId = shopifyId;
                 }
             }
 
             // If we got fewer than PAGE_LIMIT, no more pages
             if (ordersNode.size() < PAGE_LIMIT) break;
 
-            // Next page starts after the last order in this batch
+            // Next page starts after the last order in this batch (pagination only)
             pageSinceId = ordersNode.get(ordersNode.size() - 1).path("id").asLong();
         }
 
-        if (maxOrderId > sinceId) {
-            settingService.set(SystemSettingService.KEY_SHOPIFY_LAST_ORDER_ID, String.valueOf(maxOrderId));
+        // Advance the cursor only to the last successfully processed order.
+        // If there were errors, we cap at (minFailedId - 1) so failed orders are retried next run.
+        long newSinceId = minFailedId != Long.MAX_VALUE
+                ? Math.min(maxSuccessId, minFailedId - 1)
+                : maxOrderId;
+        if (newSinceId > sinceId) {
+            settingService.set(SystemSettingService.KEY_SHOPIFY_LAST_ORDER_ID, String.valueOf(newSinceId));
+            log.info("Shopify import: curseur since_id sauvegardé → {}", newSinceId);
+        } else if (minFailedId != Long.MAX_VALUE) {
+            log.warn("Shopify import: curseur non avancé à cause d'erreurs (minFailedId={}, maxSuccessId={}). " +
+                    "Les commandes en erreur seront réessayées au prochain cycle.", minFailedId, maxSuccessId);
         }
 
         return ImportResultDto.builder()
