@@ -170,6 +170,8 @@ public class ProductService {
                 .imageUrl(product.getImageUrl())
                 .active(product.isActive())
                 .currentStock(product.getCurrentStock())
+                .reservedStock(product.getReservedStock())
+                .availableStock(product.getAvailableStock())
                 .minThreshold(product.getMinThreshold())
                 .alertEnabled(product.isAlertEnabled())
                 .lowStock(product.getCurrentStock() <= product.getMinThreshold() && product.getCurrentStock() > 0)
@@ -190,6 +192,8 @@ public class ProductService {
                 .priceOverride(v.getPriceOverride())
                 .costPrice(v.getCostPrice())
                 .currentStock(v.getCurrentStock())
+                .reservedStock(v.getReservedStock())
+                .availableStock(v.getAvailableStock())
                 .active(v.isActive())
                 .createdAt(v.getCreatedAt())
                 .build();

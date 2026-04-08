@@ -17,6 +17,8 @@ public class ProductVariantDto {
     private BigDecimal priceOverride;
     private BigDecimal costPrice;
     private int currentStock;
+    private int reservedStock;
+    private int availableStock;
     private boolean active;
     private LocalDateTime createdAt;
 }

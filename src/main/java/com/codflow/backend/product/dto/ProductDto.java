@@ -19,6 +19,8 @@ public class ProductDto {
     private String imageUrl;
     private boolean active;
     private int currentStock;
+    private int reservedStock;
+    private int availableStock;
     private int minThreshold;
     private boolean alertEnabled;
     private boolean lowStock;
