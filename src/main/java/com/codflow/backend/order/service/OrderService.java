@@ -224,6 +224,9 @@ public class OrderService {
 
         Order saved = orderRepository.save(exchange);
 
+        // Vérifier le stock avant de réserver (bloque la création si rupture)
+        checkStockAvailability(saved);
+
         // Snapshot coûts + réservation stock AVANT tout accès DB
         // (les items sont encore en mémoire avec leurs références produit)
         snapshotUnitCosts(saved);
@@ -260,21 +263,24 @@ public class OrderService {
 
         order.setStatus(newStatus);
 
+        // ── CONFIRME : réservation du stock ──────────────────────────────────────
+        // Règle : CONFIRME est le seul statut qui réserve le stock.
+        // Si le stock est insuffisant, la confirmation est bloquée.
         if (newStatus.isConfirmed() && order.getConfirmedAt() == null) {
+            checkStockAvailability(order); // lance BusinessException si rupture
             order.setConfirmedAt(LocalDateTime.now());
             if (request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()) {
                 order.setDeliveryCityId(request.getDeliveryCityId());
             }
-            // Reserve stock only once (availableStock decreases, currentStock unchanged)
             if (!order.isStockReserved()) {
                 reserveStockForOrder(order);
                 order.setStockReserved(true);
             }
-            // Snapshot du coût de revient au moment de la confirmation
             snapshotUnitCosts(order);
         }
 
-        // LIVRE → finalise la déduction physique (currentStock--, reservedStock--)
+        // ── LIVRE : déduction physique (currentStock--, reservedStock--) ─────────
+        // Règle : la livraison confirme que le produit a quitté le stock physique.
         if (newStatus.isDelivered() && !order.isStockDeducted()) {
             if (order.isStockReserved()) {
                 finalizeStockDeduction(order);
@@ -283,28 +289,27 @@ public class OrderService {
             order.setStockDeducted(true);
         }
 
+        // ── ANNULÉ : libération de la réservation ────────────────────────────────
+        // Règle : ANNULÉ après CONFIRME libère la réservation.
+        //         ANNULÉ sur une commande non confirmée (pas de réservation) → rien.
+        //         PAS_SERIEUX, FAKE_ORDER, DOUBLON n'ont aucun impact sur le stock.
         if (newStatus.isCancelled() && order.getCancelledAt() == null) {
             order.setCancelledAt(LocalDateTime.now());
-            if (order.isStockReserved()) {
-                // Libère la réservation (commande annulée avant livraison)
-                releaseReservationForOrder(order, "Commande annulée");
-                order.setStockReserved(false);
-            } else if (order.isStockDeducted()) {
-                // Edge case: stock déjà finalisé, on le restaure
-                restoreStockForOrder(order, "Commande annulée après livraison");
-                order.setStockDeducted(false);
-            }
+        }
+        if (newStatus == OrderStatus.ANNULE && order.isStockReserved()) {
+            releaseReservationForOrder(order, "Commande annulée");
+            order.setStockReserved(false);
         }
 
-        // Retour physique de la marchandise
+        // ── RETOURNÉ : remise en stock ───────────────────────────────────────────
+        // Règle : si retour avant livraison → libère la réservation (stock jamais sorti).
+        //         si retour après livraison → restaure le stock physique (produit revenu).
         if (newStatus == OrderStatus.RETOURNE) {
             if (order.isStockReserved()) {
-                // Retourné avant livraison → libère la réservation
                 releaseReservationForOrder(order, "Colis retourné avant livraison");
                 order.setStockReserved(false);
             } else if (order.isStockDeducted()) {
-                // Retourné après livraison → remettre en stock physique
-                restoreStockForOrder(order, "Colis retourné");
+                restoreStockForOrder(order, "Colis retourné après livraison");
                 order.setStockDeducted(false);
             }
         }
@@ -504,6 +509,44 @@ public class OrderService {
             userRepository.findById(principal.getId()).ifPresent(history::setChangedBy);
         }
         statusHistoryRepository.save(history);
+    }
+
+    /**
+     * Vérifie que chaque article de la commande a un stock disponible suffisant.
+     * Recharge les entités depuis la DB pour avoir les valeurs à jour (après d'éventuels
+     * incréments atomiques par d'autres transactions).
+     * Lance BusinessException si au moins un produit est en rupture.
+     */
+    private void checkStockAvailability(Order order) {
+        List<String> ruptures = new ArrayList<>();
+        for (OrderItem item : order.getItems()) {
+            if (item.getProduct() == null) continue; // sans produit lié, pas de contrôle de stock
+
+            int available;
+            String label;
+            if (item.getVariant() != null) {
+                // Recharger la variante pour avoir le stock à jour
+                available = productVariantRepository.findById(item.getVariant().getId())
+                        .map(com.codflow.backend.product.entity.ProductVariant::getAvailableStock)
+                        .orElse(0);
+                label = item.getProductName();
+            } else {
+                // Recharger le produit pour avoir le stock à jour
+                available = productRepository.findById(item.getProduct().getId())
+                        .map(com.codflow.backend.product.entity.Product::getAvailableStock)
+                        .orElse(0);
+                label = item.getProductName();
+            }
+
+            if (available < item.getQuantity()) {
+                ruptures.add(String.format("'%s' : %d disponible(s), %d demandé(s)",
+                        label, available, item.getQuantity()));
+            }
+        }
+        if (!ruptures.isEmpty()) {
+            throw new BusinessException(
+                    "Stock insuffisant — impossible de confirmer : " + String.join(" | ", ruptures));
+        }
     }
 
     private void reserveStockForOrder(Order order) {
