@@ -122,19 +122,21 @@ public class StockService {
 
         if (variantId != null) {
             variantRepository.findById(variantId).ifPresent(v -> {
-                variantRepository.updateReservedStock(v.getId(), v.getReservedStock() + quantity);
+                v.setReservedStock(v.getReservedStock() + quantity);
+                variantRepository.save(v);
             });
         }
 
-        int previousReserved = product.getReservedStock();
-        productRepository.updateReservedStock(product.getId(), previousReserved + quantity);
+        int previousStock = product.getCurrentStock();
+        product.setReservedStock(product.getReservedStock() + quantity);
+        productRepository.save(product);
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
         movement.setMovementType(MovementType.RESERVE);
         movement.setQuantity(quantity);
-        movement.setPreviousStock(product.getCurrentStock());
-        movement.setNewStock(product.getCurrentStock()); // currentStock unchanged
+        movement.setPreviousStock(previousStock);
+        movement.setNewStock(previousStock); // currentStock unchanged
         movement.setReason("Réservation commande confirmée");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);
@@ -152,19 +154,17 @@ public class StockService {
 
         if (variantId != null) {
             variantRepository.findById(variantId).ifPresent(v -> {
-                int newVariantStock = Math.max(0, v.getCurrentStock() - quantity);
-                variantRepository.updateCurrentStock(v.getId(), newVariantStock);
-                int newVariantReserved = Math.max(0, v.getReservedStock() - quantity);
-                variantRepository.updateReservedStock(v.getId(), newVariantReserved);
+                v.setCurrentStock(Math.max(0, v.getCurrentStock() - quantity));
+                v.setReservedStock(Math.max(0, v.getReservedStock() - quantity));
+                variantRepository.save(v);
             });
         }
 
         int previousStock = product.getCurrentStock();
         int newStock = Math.max(0, previousStock - quantity);
-        productRepository.updateCurrentStock(product.getId(), newStock);
-        int newReserved = Math.max(0, product.getReservedStock() - quantity);
-        productRepository.updateReservedStock(product.getId(), newReserved);
         product.setCurrentStock(newStock);
+        product.setReservedStock(Math.max(0, product.getReservedStock() - quantity));
+        productRepository.save(product);
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
@@ -190,20 +190,21 @@ public class StockService {
 
         if (variantId != null) {
             variantRepository.findById(variantId).ifPresent(v -> {
-                int newVariantReserved = Math.max(0, v.getReservedStock() - quantity);
-                variantRepository.updateReservedStock(v.getId(), newVariantReserved);
+                v.setReservedStock(Math.max(0, v.getReservedStock() - quantity));
+                variantRepository.save(v);
             });
         }
 
-        int newReserved = Math.max(0, product.getReservedStock() - quantity);
-        productRepository.updateReservedStock(product.getId(), newReserved);
+        int currentStock = product.getCurrentStock();
+        product.setReservedStock(Math.max(0, product.getReservedStock() - quantity));
+        productRepository.save(product);
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
         movement.setMovementType(MovementType.RESERVE_RELEASE);
         movement.setQuantity(quantity);
-        movement.setPreviousStock(product.getCurrentStock());
-        movement.setNewStock(product.getCurrentStock()); // currentStock unchanged
+        movement.setPreviousStock(currentStock);
+        movement.setNewStock(currentStock); // currentStock unchanged
         movement.setReason(reason != null ? reason : "Libération de réservation");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);
@@ -220,14 +221,15 @@ public class StockService {
 
         if (variantId != null) {
             variantRepository.findById(variantId).ifPresent(v -> {
-                variantRepository.updateCurrentStock(v.getId(), v.getCurrentStock() + quantity);
+                v.setCurrentStock(v.getCurrentStock() + quantity);
+                variantRepository.save(v);
             });
         }
 
         int previousStock = product.getCurrentStock();
         int newStock = previousStock + quantity;
-        productRepository.updateCurrentStock(product.getId(), newStock);
         product.setCurrentStock(newStock);
+        productRepository.save(product);
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
