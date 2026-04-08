@@ -224,14 +224,16 @@ public class OrderService {
 
         Order saved = orderRepository.save(exchange);
 
+        // Snapshot coûts + réservation stock AVANT tout accès DB
+        // (les items sont encore en mémoire avec leurs références produit)
+        snapshotUnitCosts(saved);
+        reserveStockForOrder(saved);
+        saved.setStockReserved(true);
+
         // Historique : NOUVEAU → CONFIRME
         recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Échange créé depuis commande " + sourceOrder.getOrderNumber());
         recordStatusChange(saved, OrderStatus.NOUVEAU, OrderStatus.CONFIRME, principal, "Échange confirmé automatiquement");
 
-        // Snapshot coûts + réservation stock
-        snapshotUnitCosts(saved);
-        reserveStockForOrder(saved);
-        saved.setStockReserved(true);
         orderRepository.save(saved);
 
         log.info("Exchange order created: {} from source {} (exchange=true)", saved.getOrderNumber(), sourceOrder.getOrderNumber());
