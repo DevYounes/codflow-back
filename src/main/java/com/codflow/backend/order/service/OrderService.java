@@ -469,10 +469,18 @@ public class OrderService {
 
     private String generateOrderNumber(CreateOrderRequest request) {
         if (StringUtils.hasText(request.getOrderNumber())) {
-            if (orderRepository.existsByOrderNumber(request.getOrderNumber())) {
-                throw new BusinessException("Ce numéro de commande existe déjà: " + request.getOrderNumber());
+            if (!orderRepository.existsByOrderNumber(request.getOrderNumber())) {
+                return request.getOrderNumber();
             }
-            return request.getOrderNumber();
+            // Shopify imports: collision possible if an agent manually created an order with the same number.
+            // Add a short unique suffix rather than failing — we never want to lose a Shopify order over a name clash.
+            if (request.getSource() == OrderSource.SHOPIFY) {
+                String candidate = request.getOrderNumber() + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+                log.warn("Order number '{}' already exists — using '{}' for Shopify import {}",
+                        request.getOrderNumber(), candidate, request.getShopifyOrderId());
+                return candidate;
+            }
+            throw new BusinessException("Ce numéro de commande existe déjà: " + request.getOrderNumber());
         }
         // Auto-generate: COD-YYYYMMDD-XXXX
         String prefix = "COD-" + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);

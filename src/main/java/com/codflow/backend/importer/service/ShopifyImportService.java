@@ -383,26 +383,40 @@ public class ShopifyImportService {
         req.setCustomerName(fullName);
 
         // Phone — shipping_address.phone or customer.phone or order.phone
+        // Use a placeholder if missing so the order is imported and an agent can complete it later.
         String phone = shipping.path("phone").asText(null);
         if (blank(phone)) phone = customer.path("phone").asText(null);
         if (blank(phone)) phone = order.path("phone").asText(null);
-        if (blank(phone)) throw new IllegalArgumentException("Téléphone manquant");
+        if (blank(phone)) {
+            phone = "0000000000";
+            log.warn("[SHOPIFY-IMPORT] Commande {} : téléphone manquant — importée avec '0000000000', à compléter manuellement.",
+                    order.path("name").asText(req.getShopifyOrderId()));
+        }
         req.setCustomerPhone(PhoneNormalizer.toLocalFormat(phone));
 
-        // Address
+        // Address — use placeholder if missing
         String address = shipping.path("address1").asText(null);
         String address2 = shipping.path("address2").asText(null);
         if (!blank(address2)) address = address + ", " + address2;
-        if (blank(address)) throw new IllegalArgumentException("Adresse manquante");
+        if (blank(address)) {
+            address = "À compléter";
+            log.warn("[SHOPIFY-IMPORT] Commande {} : adresse manquante — importée avec placeholder, à compléter manuellement.",
+                    order.path("name").asText(req.getShopifyOrderId()));
+        }
         req.setAddress(address);
 
+        // City — use placeholder if missing
         String city = shipping.path("city").asText(null);
-        if (blank(city)) throw new IllegalArgumentException("Ville manquante");
+        if (blank(city)) {
+            city = "À compléter";
+            log.warn("[SHOPIFY-IMPORT] Commande {} : ville manquante — importée avec placeholder, à compléter manuellement.",
+                    order.path("name").asText(req.getShopifyOrderId()));
+        }
         req.setVille(city);
         req.setCity(city);
         req.setZipCode(shipping.path("zip").asText(null));
 
-        // Notes
+        // Notes — append import warnings if any fields were missing
         req.setNotes(order.path("note").asText(null));
 
         // Shipping cost from first shipping line
