@@ -120,23 +120,21 @@ public class StockService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
 
+        // Incrément atomique en SQL — pas de lecture/écriture en Java pour éviter les conflits de cache Hibernate
+        productRepository.incrementReservedStock(productId, quantity);
         if (variantId != null) {
-            variantRepository.findById(variantId).ifPresent(v -> {
-                v.setReservedStock(v.getReservedStock() + quantity);
-                variantRepository.save(v);
-            });
+            variantRepository.incrementReservedStock(variantId, quantity);
         }
 
-        int previousStock = product.getCurrentStock();
-        product.setReservedStock(product.getReservedStock() + quantity);
-        productRepository.save(product);
+        // Recharger pour avoir les vraies valeurs après incrément
+        product = productRepository.findById(productId).orElseThrow();
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
         movement.setMovementType(MovementType.RESERVE);
         movement.setQuantity(quantity);
-        movement.setPreviousStock(previousStock);
-        movement.setNewStock(previousStock); // currentStock unchanged
+        movement.setPreviousStock(product.getCurrentStock());
+        movement.setNewStock(product.getCurrentStock()); // currentStock unchanged
         movement.setReason("Réservation commande confirmée");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);
@@ -151,27 +149,25 @@ public class StockService {
     public void finalizeStockDeduction(Long productId, Long variantId, int quantity, Long orderId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
+        int previousStock = product.getCurrentStock();
 
+        // Incrément atomique négatif en SQL
+        productRepository.incrementCurrentStock(productId, -quantity);
+        productRepository.incrementReservedStock(productId, -quantity);
         if (variantId != null) {
-            variantRepository.findById(variantId).ifPresent(v -> {
-                v.setCurrentStock(Math.max(0, v.getCurrentStock() - quantity));
-                v.setReservedStock(Math.max(0, v.getReservedStock() - quantity));
-                variantRepository.save(v);
-            });
+            variantRepository.incrementCurrentStock(variantId, -quantity);
+            variantRepository.incrementReservedStock(variantId, -quantity);
         }
 
-        int previousStock = product.getCurrentStock();
-        int newStock = Math.max(0, previousStock - quantity);
-        product.setCurrentStock(newStock);
-        product.setReservedStock(Math.max(0, product.getReservedStock() - quantity));
-        productRepository.save(product);
+        // Recharger pour avoir les vraies valeurs après décrément
+        product = productRepository.findById(productId).orElseThrow();
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
         movement.setMovementType(MovementType.OUT);
         movement.setQuantity(quantity);
         movement.setPreviousStock(previousStock);
-        movement.setNewStock(newStock);
+        movement.setNewStock(product.getCurrentStock());
         movement.setReason("Commande livrée");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);
@@ -187,17 +183,15 @@ public class StockService {
     public void releaseReservation(Long productId, Long variantId, int quantity, Long orderId, String reason) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
+        int currentStock = product.getCurrentStock();
 
+        productRepository.incrementReservedStock(productId, -quantity);
         if (variantId != null) {
-            variantRepository.findById(variantId).ifPresent(v -> {
-                v.setReservedStock(Math.max(0, v.getReservedStock() - quantity));
-                variantRepository.save(v);
-            });
+            variantRepository.incrementReservedStock(variantId, -quantity);
         }
 
-        int currentStock = product.getCurrentStock();
-        product.setReservedStock(Math.max(0, product.getReservedStock() - quantity));
-        productRepository.save(product);
+        // Recharger après update
+        product = productRepository.findById(productId).orElseThrow();
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
@@ -218,25 +212,22 @@ public class StockService {
     public void restoreStockForOrder(Long productId, Long variantId, int quantity, Long orderId, String reason) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", productId));
+        int previousStock = product.getCurrentStock();
 
+        productRepository.incrementCurrentStock(productId, quantity);
         if (variantId != null) {
-            variantRepository.findById(variantId).ifPresent(v -> {
-                v.setCurrentStock(v.getCurrentStock() + quantity);
-                variantRepository.save(v);
-            });
+            variantRepository.incrementCurrentStock(variantId, quantity);
         }
 
-        int previousStock = product.getCurrentStock();
-        int newStock = previousStock + quantity;
-        product.setCurrentStock(newStock);
-        productRepository.save(product);
+        // Recharger après update
+        product = productRepository.findById(productId).orElseThrow();
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
         movement.setMovementType(MovementType.RETURN);
         movement.setQuantity(quantity);
         movement.setPreviousStock(previousStock);
-        movement.setNewStock(newStock);
+        movement.setNewStock(product.getCurrentStock());
         movement.setReason(reason != null ? reason : "Retour commande après livraison");
         movement.setReferenceType("ORDER");
         movement.setReferenceId(orderId);

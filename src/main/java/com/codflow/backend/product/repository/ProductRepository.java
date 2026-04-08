@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -32,11 +33,25 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     List<Product> findByActiveTrue();
 
-    @Modifying
+    // Valeur absolue — utilisé par adjustStock et StockArrivalService
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
     @Query("UPDATE Product p SET p.currentStock = :newStock WHERE p.id = :productId")
     void updateCurrentStock(@Param("productId") Long productId, @Param("newStock") int newStock);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
     @Query("UPDATE Product p SET p.reservedStock = :newReserved WHERE p.id = :productId")
     void updateReservedStock(@Param("productId") Long productId, @Param("newReserved") int newReserved);
+
+    // Incrément atomique — utilisé par les opérations de réservation de stock
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("UPDATE Product p SET p.currentStock = p.currentStock + :delta WHERE p.id = :productId")
+    void incrementCurrentStock(@Param("productId") Long productId, @Param("delta") int delta);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("UPDATE Product p SET p.reservedStock = p.reservedStock + :delta WHERE p.id = :productId")
+    void incrementReservedStock(@Param("productId") Long productId, @Param("delta") int delta);
 }
