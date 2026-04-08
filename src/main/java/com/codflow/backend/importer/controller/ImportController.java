@@ -179,6 +179,32 @@ public class ImportController {
     }
 
     /**
+     * Resets the Shopify since_id cursor.
+     * Use sinceId=0 to force a full re-import of all orders.
+     * Use a specific Shopify order ID to resume from that point.
+     * WARNING: setting sinceId=0 may re-import thousands of already-imported orders
+     * (they will be skipped via shopifyOrderId deduplication, but the process may be slow).
+     */
+    @PostMapping("/shopify/reset-since-id")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Réinitialiser le curseur since_id de l'import Shopify",
+        description = """
+            Réinitialise le curseur de synchronisation Shopify (since_id).
+            sinceId=0 → réimport complet depuis le début (les doublons sont ignorés automatiquement).
+            sinceId=<N> → reprend depuis l'ordre ID N.
+            Utile pour diagnostiquer ou récupérer des commandes manquées.
+            """
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> resetShopifySinceId(
+            @RequestParam(value = "sinceId", defaultValue = "0") long sinceId) {
+        shopifyImportService.resetSinceId(sinceId);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Curseur since_id réinitialisé à " + sinceId + ". Le prochain import démarrera depuis cet ID.",
+                Map.of("sinceId", sinceId)));
+    }
+
+    /**
      * One-shot migration endpoint — upload your Excel tracking file (File 2) to update
      * order statuses and create delivery shipments from real historical data.
      *

@@ -77,13 +77,23 @@ public class ShopifyImportService {
         }
         try {
             ImportResultDto result = doImport();
-            if (result.getImported() > 0 || result.getErrors() > 0) {
-                log.info("Shopify scheduled sync: {} imported, {} skipped, {} errors",
-                        result.getImported(), result.getSkipped(), result.getErrors());
+            log.info("Shopify scheduled sync: {} importées, {} ignorées, {} erreurs (total={})",
+                    result.getImported(), result.getSkipped(), result.getErrors(), result.getTotalRows());
+            if (!result.getErrorMessages().isEmpty()) {
+                result.getErrorMessages().forEach(msg -> log.warn("  [SHOPIFY-ERR] {}", msg));
             }
         } catch (Exception e) {
             log.error("Shopify scheduled sync failed: {}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * Resets the since_id cursor to 0 (full re-import) or to a specific value.
+     * Useful when the cursor is stuck or when you need to re-import orders.
+     */
+    public void resetSinceId(long sinceId) {
+        settingService.set(SystemSettingService.KEY_SHOPIFY_LAST_ORDER_ID, String.valueOf(sinceId));
+        log.warn("Shopify import: since_id reset to {}", sinceId);
     }
 
     /**
@@ -212,6 +222,8 @@ public class ShopifyImportService {
                 .map(s -> { try { return Long.parseLong(s); } catch (NumberFormatException e) { return 0L; } })
                 .orElse(0L);
 
+        log.info("Shopify import: démarrage depuis since_id={} (domaine={})", sinceId, domain);
+
         List<String> errors  = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         int imported  = 0;
@@ -223,7 +235,11 @@ public class ShopifyImportService {
         while (true) {
             String url = buildOrdersUrl(domain, pageSinceId);
             JsonNode ordersNode = fetchOrders(url, token);
-            if (ordersNode == null || !ordersNode.isArray() || ordersNode.isEmpty()) break;
+            if (ordersNode == null || !ordersNode.isArray() || ordersNode.isEmpty()) {
+                log.info("Shopify import: 0 commande retournée pour since_id={} (fin de pagination ou API vide)", pageSinceId);
+                break;
+            }
+            log.info("Shopify import: {} commandes reçues pour since_id={}", ordersNode.size(), pageSinceId);
 
             for (JsonNode order : ordersNode) {
                 totalRows++;
