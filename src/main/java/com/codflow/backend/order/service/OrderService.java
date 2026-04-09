@@ -227,20 +227,24 @@ public class OrderService {
         // Vérifier le stock avant de réserver (bloque la création si rupture)
         checkStockAvailability(saved);
 
-        // Snapshot coûts + réservation stock AVANT tout accès DB
-        // (les items sont encore en mémoire avec leurs références produit)
+        // Snapshot des coûts AVANT les opérations stock (entités encore MANAGED)
         snapshotUnitCosts(saved);
-        reserveStockForOrder(saved);
         saved.setStockReserved(true);
 
         // Historique : NOUVEAU → CONFIRME
         recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Échange créé depuis commande " + sourceOrder.getOrderNumber());
         recordStatusChange(saved, OrderStatus.NOUVEAU, OrderStatus.CONFIRME, principal, "Échange confirmé automatiquement");
 
-        orderRepository.save(saved);
+        // Persister l'ordre pendant qu'il est encore MANAGED (avant que les
+        // opérations stock ne vident le L1 cache via clearAutomatically=true)
+        orderRepository.saveAndFlush(saved);
+
+        // Réservation stock (peut vider le L1 cache via clearAutomatically=true)
+        reserveStockForOrder(saved);
 
         log.info("Exchange order created: {} from source {} (exchange=true)", saved.getOrderNumber(), sourceOrder.getOrderNumber());
-        return toDto(saved, true);
+        // Rechargement frais (L1 cache potentiellement vidé par les opérations stock)
+        return toDto(getOrderById(saved.getId()), true);
     }
 
     private String firstNonBlank(String a, String b) {
@@ -261,61 +265,71 @@ public class OrderService {
             }
         }
 
+        // ── Pré-calcul des opérations stock nécessaires (avant toute modification) ──
+        // On lit l'état courant de l'ordre AVANT de le modifier pour décider quelles
+        // opérations stock exécuter, et on évite ainsi tout état incohérent.
+        boolean shouldReserve   = newStatus.isConfirmed() && order.getConfirmedAt() == null && !order.isStockReserved();
+        boolean shouldDeduct    = newStatus.isDelivered()  && !order.isStockDeducted() && order.isStockReserved();
+        boolean shouldRelease   = newStatus == OrderStatus.ANNULE  && order.isStockReserved();
+        boolean shouldRestoreReserve  = newStatus == OrderStatus.RETOURNE && order.isStockReserved();
+        boolean shouldRestoreDeducted = newStatus == OrderStatus.RETOURNE && !order.isStockReserved() && order.isStockDeducted();
+
+        // ── Vérification stock AVANT toute modification ──────────────────────────
+        if (shouldReserve) {
+            checkStockAvailability(order);
+        }
+
+        // ── Modification des champs de l'ordre ──────────────────────────────────
         order.setStatus(newStatus);
 
-        // ── CONFIRME : réservation du stock ──────────────────────────────────────
-        // Règle : CONFIRME est le seul statut qui réserve le stock.
-        // Si le stock est insuffisant, la confirmation est bloquée.
         if (newStatus.isConfirmed() && order.getConfirmedAt() == null) {
-            checkStockAvailability(order); // lance BusinessException si rupture
             order.setConfirmedAt(LocalDateTime.now());
             if (request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()) {
                 order.setDeliveryCityId(request.getDeliveryCityId());
             }
-            if (!order.isStockReserved()) {
-                reserveStockForOrder(order);
+            if (shouldReserve) {
                 order.setStockReserved(true);
             }
+            // Snapshot des coûts ICI pendant que les entités sont encore MANAGED
+            // (avant que clearAutomatically des opérations stock ne vide le L1 cache)
             snapshotUnitCosts(order);
         }
 
-        // ── LIVRE : déduction physique (currentStock--, reservedStock--) ─────────
-        // Règle : la livraison confirme que le produit a quitté le stock physique.
         if (newStatus.isDelivered() && !order.isStockDeducted()) {
-            if (order.isStockReserved()) {
-                finalizeStockDeduction(order);
-                order.setStockReserved(false);
-            }
+            if (shouldDeduct) order.setStockReserved(false);
             order.setStockDeducted(true);
         }
 
-        // ── ANNULÉ : libération de la réservation ────────────────────────────────
-        // Règle : ANNULÉ après CONFIRME libère la réservation.
-        //         ANNULÉ sur une commande non confirmée (pas de réservation) → rien.
-        //         PAS_SERIEUX, FAKE_ORDER, DOUBLON n'ont aucun impact sur le stock.
         if (newStatus.isCancelled() && order.getCancelledAt() == null) {
             order.setCancelledAt(LocalDateTime.now());
         }
-        if (newStatus == OrderStatus.ANNULE && order.isStockReserved()) {
-            releaseReservationForOrder(order, "Commande annulée");
+        if (shouldRelease) {
             order.setStockReserved(false);
         }
 
-        // ── RETOURNÉ : remise en stock ───────────────────────────────────────────
-        // Règle : si retour avant livraison → libère la réservation (stock jamais sorti).
-        //         si retour après livraison → restaure le stock physique (produit revenu).
         if (newStatus == OrderStatus.RETOURNE) {
-            if (order.isStockReserved()) {
-                releaseReservationForOrder(order, "Colis retourné avant livraison");
-                order.setStockReserved(false);
-            } else if (order.isStockDeducted()) {
-                restoreStockForOrder(order, "Colis retourné après livraison");
-                order.setStockDeducted(false);
-            }
+            if (shouldRestoreReserve)  order.setStockReserved(false);
+            if (shouldRestoreDeducted) order.setStockDeducted(false);
         }
 
         recordStatusChange(order, previousStatus, newStatus, principal, request.getNotes());
-        return toDto(orderRepository.save(order), true);
+
+        // ── Persistance de l'ordre pendant qu'il est encore MANAGED ─────────────
+        // saveAndFlush AVANT les opérations stock : les @Modifying avec
+        // clearAutomatically=true vident le L1 cache Hibernate ; si on sauvegardait
+        // après, merge() sur une entité détachée pourrait réécrire un état périmé
+        // en DB (notamment currentStock via le dirty-check ou les cascades).
+        orderRepository.saveAndFlush(order);
+
+        // ── Opérations stock (peuvent vider le L1 cache) ────────────────────────
+        if (shouldReserve)         reserveStockForOrder(order);
+        if (shouldDeduct)          finalizeStockDeduction(order);
+        if (shouldRelease)         releaseReservationForOrder(order, "Commande annulée");
+        if (shouldRestoreReserve)  releaseReservationForOrder(order, "Colis retourné avant livraison");
+        if (shouldRestoreDeducted) restoreStockForOrder(order, "Colis retourné après livraison");
+
+        // ── Rechargement frais (L1 cache potentiellement vidé) ──────────────────
+        return toDto(getOrderById(orderId), true);
     }
 
     @Transactional
