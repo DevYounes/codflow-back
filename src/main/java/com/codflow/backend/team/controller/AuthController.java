@@ -1,9 +1,11 @@
 package com.codflow.backend.team.controller;
 
 import com.codflow.backend.common.dto.ApiResponse;
+import com.codflow.backend.security.RefreshTokenService;
 import com.codflow.backend.security.UserPrincipal;
 import com.codflow.backend.team.dto.LoginRequest;
 import com.codflow.backend.team.dto.LoginResponse;
+import com.codflow.backend.team.dto.RefreshTokenRequest;
 import com.codflow.backend.team.dto.UserDto;
 import com.codflow.backend.team.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,11 +23,43 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final UserService userService;
+    private final RefreshTokenService refreshTokenService;
 
     @PostMapping("/login")
-    @Operation(summary = "Connexion utilisateur")
+    @Operation(summary = "Connexion utilisateur — retourne un access token (1h) et un refresh token (7j / 8h inactivité)")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(ApiResponse.success(userService.login(request)));
+    }
+
+    @PostMapping("/refresh")
+    @Operation(
+        summary = "Renouveler l'access token",
+        description = """
+            Échange un refresh token valide contre un nouvel access token JWT.
+            Le refresh token est révoqué si :
+            - il est inconnu ou déjà utilisé après expiration
+            - plus de 8h se sont écoulées sans activité (inactivity-timeout)
+            - son expiration absolue de 7 jours est atteinte
+            """
+    )
+    public ResponseEntity<ApiResponse<LoginResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        String newAccessToken = refreshTokenService.refreshAccessToken(request.getRefreshToken());
+        return ResponseEntity.ok(ApiResponse.success(
+                LoginResponse.builder()
+                        .accessToken(newAccessToken)
+                        .tokenType("Bearer")
+                        .refreshToken(request.getRefreshToken())
+                        .build()));
+    }
+
+    @PostMapping("/logout")
+    @Operation(
+        summary = "Déconnexion — révoque le refresh token",
+        description = "Supprime le refresh token en base. L'access token restera valide jusqu'à son expiration naturelle (1h max)."
+    )
+    public ResponseEntity<ApiResponse<Void>> logout(@Valid @RequestBody RefreshTokenRequest request) {
+        refreshTokenService.revokeToken(request.getRefreshToken());
+        return ResponseEntity.ok(ApiResponse.success("Déconnexion réussie"));
     }
 
     @GetMapping("/me")

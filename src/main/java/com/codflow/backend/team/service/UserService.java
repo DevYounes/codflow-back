@@ -4,6 +4,8 @@ import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.security.JwtTokenProvider;
+import com.codflow.backend.security.RefreshToken;
+import com.codflow.backend.security.RefreshTokenService;
 import com.codflow.backend.security.UserPrincipal;
 import com.codflow.backend.team.dto.*;
 import com.codflow.backend.team.entity.User;
@@ -32,6 +34,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
+    private final RefreshTokenService refreshTokenService;
 
     @Value("${app.jwt.expiration-ms}")
     private long jwtExpirationMs;
@@ -41,14 +44,16 @@ public class UserService {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsernameOrEmail(), request.getPassword())
         );
-        String token = tokenProvider.generateToken(authentication);
+        String accessToken = tokenProvider.generateToken(authentication);
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         User user = userRepository.findById(principal.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", principal.getId()));
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
         return LoginResponse.builder()
-                .accessToken(token)
+                .accessToken(accessToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtExpirationMs / 1000)
+                .refreshToken(refreshToken.getToken())
                 .user(toDto(user))
                 .build();
     }

@@ -57,8 +57,9 @@ server:
 app:
   jwt:
     secret: ${JWT_SECRET:codflow-super-secret-key-must-be-at-least-32-characters-long-for-hs256}
-    expiration-ms: ${JWT_EXPIRATION:86400000}  # 24h
-    refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION:604800000}  # 7 days
+    expiration-ms: ${JWT_EXPIRATION:3600000}          # 1h  (access token — court)
+    refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION:604800000}   # 7 jours (expiration absolue refresh token)
+    inactivity-timeout-ms: ${JWT_INACTIVITY_TIMEOUT:28800000}    # 8h  (fenêtre d'inactivité)
 
   cors:
     allowed-origins: ${CORS_ORIGINS:http://localhost:4200}
