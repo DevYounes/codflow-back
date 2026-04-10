@@ -3,10 +3,8 @@ package com.codflow.backend.team.controller;
 import com.codflow.backend.common.dto.ApiResponse;
 import com.codflow.backend.security.RefreshTokenService;
 import com.codflow.backend.security.UserPrincipal;
-import com.codflow.backend.team.dto.LoginRequest;
-import com.codflow.backend.team.dto.LoginResponse;
-import com.codflow.backend.team.dto.RefreshTokenRequest;
-import com.codflow.backend.team.dto.UserDto;
+import com.codflow.backend.team.dto.*;
+
 import com.codflow.backend.team.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -66,5 +64,28 @@ public class AuthController {
     @Operation(summary = "Obtenir le profil de l'utilisateur connecté")
     public ResponseEntity<ApiResponse<UserDto>> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.success(userService.getUser(principal.getId())));
+    }
+
+    @PatchMapping("/me")
+    @Operation(
+        summary = "Mettre à jour son propre profil",
+        description = "Permet à tout utilisateur authentifié de modifier son prénom, nom, email et téléphone."
+    )
+    public ResponseEntity<ApiResponse<UserDto>> updateProfile(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody UpdateProfileRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Profil mis à jour", userService.updateProfile(principal.getId(), request)));
+    }
+
+    @PostMapping("/change-password")
+    @Operation(
+        summary = "Changer son mot de passe",
+        description = "Nécessite le mot de passe actuel. Disponible pour tous les utilisateurs authentifiés."
+    )
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        userService.changePassword(principal.getId(), request);
+        return ResponseEntity.ok(ApiResponse.success("Mot de passe modifié avec succès"));
     }
 }
