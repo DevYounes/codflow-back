@@ -98,25 +98,7 @@ public class OrderService {
 
         // Add items
         for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
-            OrderItem item = new OrderItem();
-            item.setProductName(itemReq.getProductName());
-            item.setProductSku(itemReq.getProductSku());
-            item.setQuantity(itemReq.getQuantity());
-            item.setUnitPrice(itemReq.getUnitPrice());
-
-            if (itemReq.getProductId() != null) {
-                productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
-            }
-            if (itemReq.getVariantId() != null) {
-                productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
-                    item.setVariant(v);
-                    if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
-                        item.setUnitPrice(v.getPriceOverride());
-                    }
-                });
-            }
-            item.calculateTotalPrice();
-            order.addItem(item);
+            order.addItem(buildOrderItem(itemReq));
         }
         order.recalculateTotals();
 
@@ -197,24 +179,7 @@ public class OrderService {
 
         // Articles du nouvel échange
         for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
-            OrderItem item = new OrderItem();
-            item.setProductName(itemReq.getProductName());
-            item.setProductSku(itemReq.getProductSku());
-            item.setQuantity(itemReq.getQuantity());
-            item.setUnitPrice(itemReq.getUnitPrice());
-            if (itemReq.getProductId() != null) {
-                productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
-            }
-            if (itemReq.getVariantId() != null) {
-                productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
-                    item.setVariant(v);
-                    if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
-                        item.setUnitPrice(v.getPriceOverride());
-                    }
-                });
-            }
-            item.calculateTotalPrice();
-            exchange.addItem(item);
+            exchange.addItem(buildOrderItem(itemReq));
         }
         exchange.recalculateTotals();
 
@@ -407,23 +372,7 @@ public class OrderService {
             order.getItems().clear();
             List<OrderItem> newItems = new ArrayList<>();
             for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
-                OrderItem item = new OrderItem();
-                item.setProductName(itemReq.getProductName());
-                item.setProductSku(itemReq.getProductSku());
-                item.setQuantity(itemReq.getQuantity());
-                item.setUnitPrice(itemReq.getUnitPrice());
-                if (itemReq.getProductId() != null) {
-                    productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
-                }
-                if (itemReq.getVariantId() != null) {
-                    productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
-                        item.setVariant(v);
-                        if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
-                            item.setUnitPrice(v.getPriceOverride());
-                        }
-                    });
-                }
-                item.calculateTotalPrice();
+                OrderItem item = buildOrderItem(itemReq);
                 order.addItem(item);
                 newItems.add(item);
             }
@@ -794,6 +743,32 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Commande", id));
     }
 
+    private OrderItem buildOrderItem(CreateOrderRequest.OrderItemRequest itemReq) {
+        OrderItem item = new OrderItem();
+        item.setProductName(itemReq.getProductName());
+        item.setProductSku(itemReq.getProductSku());
+        item.setQuantity(itemReq.getQuantity());
+        item.setUnitPrice(itemReq.getUnitPrice());
+        item.setVariantColor(itemReq.getVariantColor());
+        item.setVariantSize(itemReq.getVariantSize());
+        if (itemReq.getProductId() != null) {
+            productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
+        }
+        if (itemReq.getVariantId() != null) {
+            productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
+                item.setVariant(v);
+                // Variant overrides manual color/size — source of truth if linked
+                item.setVariantColor(v.getColor());
+                item.setVariantSize(v.getSize());
+                if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
+                    item.setUnitPrice(v.getPriceOverride());
+                }
+            });
+        }
+        item.calculateTotalPrice();
+        return item;
+    }
+
     private Customer findOrCreateCustomer(String phone, String phoneNormalized,
                                           String fullName, String address, String ville) {
         try {
@@ -828,8 +803,8 @@ public class OrderService {
                     .id(item.getId())
                     .productId(item.getProduct() != null ? item.getProduct().getId() : null)
                     .variantId(v != null ? v.getId() : null)
-                    .variantColor(v != null ? v.getColor() : null)
-                    .variantSize(v != null ? v.getSize() : null)
+                    .variantColor(item.getVariantColor())
+                    .variantSize(item.getVariantSize())
                     .productName(item.getProductName())
                     .productSku(item.getProductSku())
                     .quantity(item.getQuantity())

@@ -59,6 +59,8 @@ public class CreateOrderRequest {
         private String productName;
 
         private String productSku;
+        private String variantColor;
+        private String variantSize;
 
         @NotNull
         private Integer quantity = 1;
