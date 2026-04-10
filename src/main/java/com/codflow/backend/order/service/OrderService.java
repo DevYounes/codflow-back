@@ -271,8 +271,12 @@ public class OrderService {
         boolean shouldReserve   = newStatus.isConfirmed() && order.getConfirmedAt() == null && !order.isStockReserved();
         boolean shouldDeduct    = newStatus.isDelivered()  && !order.isStockDeducted() && order.isStockReserved();
         boolean shouldRelease   = newStatus == OrderStatus.ANNULE  && order.isStockReserved();
-        boolean shouldRestoreReserve  = newStatus == OrderStatus.RETOURNE && order.isStockReserved();
-        boolean shouldRestoreDeducted = newStatus == OrderStatus.RETOURNE && !order.isStockReserved() && order.isStockDeducted();
+        // deferReturnStock = true quand c'est DeliveryService qui appelle :
+        // le stock sera libéré à la confirmation physique (confirmReturnReceived), pas maintenant.
+        boolean shouldRestoreReserve  = newStatus == OrderStatus.RETOURNE && order.isStockReserved()
+                && !request.isDeferReturnStock();
+        boolean shouldRestoreDeducted = newStatus == OrderStatus.RETOURNE && !order.isStockReserved()
+                && order.isStockDeducted() && !request.isDeferReturnStock();
 
         // ── Vérification stock AVANT toute modification ──────────────────────────
         if (shouldReserve) {
@@ -307,7 +311,7 @@ public class OrderService {
             order.setStockReserved(false);
         }
 
-        if (newStatus == OrderStatus.RETOURNE) {
+        if (newStatus == OrderStatus.RETOURNE && !request.isDeferReturnStock()) {
             if (shouldRestoreReserve)  order.setStockReserved(false);
             if (shouldRestoreDeducted) order.setStockDeducted(false);
         }
@@ -330,6 +334,48 @@ public class OrderService {
 
         // ── Rechargement frais (L1 cache potentiellement vidé) ──────────────────
         return toDto(getOrderById(orderId), true);
+    }
+
+    /**
+     * Applique les opérations stock suite à la confirmation physique d'un retour.
+     * Appelé par DeliveryService.confirmReturnReceived() — jamais depuis updateStatus().
+     *
+     * Deux cas :
+     *  - stockReserved = true  → colis retourné avant livraison : libère la réservation
+     *  - stockDeducted = true  → colis retourné après livraison  : restaure le stock physique
+     *
+     * Respecte le pattern saveAndFlush AVANT les opérations @Modifying stock
+     * pour éviter l'écrasement du L1 cache Hibernate (cf. CLAUDE.md).
+     */
+    @Transactional
+    public void processPhysicalReturn(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Commande", orderId));
+
+        boolean shouldRestoreReserve  = order.isStockReserved();
+        boolean shouldRestoreDeducted = !order.isStockReserved() && order.isStockDeducted();
+
+        if (!shouldRestoreReserve && !shouldRestoreDeducted) {
+            log.debug("[RETOUR PHYSIQUE] Commande {} — aucune opération stock nécessaire (déjà traité ou pas de stock)",
+                    order.getOrderNumber());
+            return;
+        }
+
+        // Mise à jour des flags avant saveAndFlush
+        if (shouldRestoreReserve)  order.setStockReserved(false);
+        if (shouldRestoreDeducted) order.setStockDeducted(false);
+        orderRepository.saveAndFlush(order);
+
+        // Opérations stock (peuvent vider le L1 cache via clearAutomatically)
+        if (shouldRestoreReserve) {
+            releaseReservationForOrder(order, "Retour physique confirmé par le marchand");
+            log.info("[RETOUR PHYSIQUE] Commande {} — réservation libérée (colis retourné avant livraison)",
+                    order.getOrderNumber());
+        } else {
+            restoreStockForOrder(order, "Retour physique confirmé par le marchand");
+            log.info("[RETOUR PHYSIQUE] Commande {} — stock restauré (colis retourné après livraison)",
+                    order.getOrderNumber());
+        }
     }
 
     @Transactional

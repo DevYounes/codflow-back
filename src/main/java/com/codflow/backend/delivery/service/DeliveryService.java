@@ -303,6 +303,9 @@ public class DeliveryService {
             case RETURNED -> {
                 shipment.setReturnedAt(now);
                 statusUpdate.setStatus(OrderStatus.RETOURNE);
+                // Stock différé : sera libéré à la confirmation physique (confirmReturnReceived),
+                // pas maintenant — le colis est encore chez Ozon en transit retour.
+                statusUpdate.setDeferReturnStock(true);
                 // RETURNED-PRICE (souvent 0 MAD chez Ozon)
                 shipment.setAppliedFee(shipment.getReturnedPrice());
                 shipment.setAppliedFeeType("RETOUR");
@@ -455,7 +458,16 @@ public class DeliveryService {
             shipment.setReturnReceivedNotes(request.getNotes());
         }
 
-        log.info("[RETOUR CONFIRMÉ] Colis {} (commande {}) — reçu physiquement",
+        // Libération du stock au moment de la réception physique — pas avant.
+        // (le stock était différé depuis le "Retourné" Ozon via deferReturnStock)
+        try {
+            orderService.processPhysicalReturn(shipment.getOrder().getId());
+        } catch (Exception e) {
+            log.error("[RETOUR CONFIRMÉ] Erreur lors de la mise à jour du stock pour commande {}: {}",
+                    shipment.getOrder().getOrderNumber(), e.getMessage());
+        }
+
+        log.info("[RETOUR CONFIRMÉ] Colis {} (commande {}) — reçu physiquement, stock mis à jour",
                 shipment.getTrackingNumber(), shipment.getOrder().getOrderNumber());
         return toDto(shipmentRepository.save(shipment), false);
     }
