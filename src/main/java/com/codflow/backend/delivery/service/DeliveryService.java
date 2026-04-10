@@ -309,9 +309,18 @@ public class DeliveryService {
             }
             case FAILED_DELIVERY -> {
                 statusUpdate.setStatus(OrderStatus.ECHEC_LIVRAISON);
-                // Client a refusé à la porte → REFUSED-PRICE
                 shipment.setAppliedFee(shipment.getRefusedPrice());
                 shipment.setAppliedFeeType("REFUS");
+                // Distinguer un refus explicite du client ("Refusé") d'une tentative échouée neutre.
+                // providerStatusLabel est déjà mis à jour juste avant l'appel à updateShipmentStatus().
+                String label = shipment.getProviderStatusLabel();
+                if (label != null && label.toLowerCase().contains("refus")) {
+                    shipment.setRefusedAttempts(shipment.getRefusedAttempts() + 1);
+                    log.info("[DELIVERY-REFUSED] Colis {} — refus #{} par le client pour commande {}",
+                            shipment.getTrackingNumber(),
+                            shipment.getRefusedAttempts(),
+                            shipment.getOrder().getOrderNumber());
+                }
             }
             case CANCELLED -> {
                 // "Annulé" chez Ozon = tentative de livraison annulée ce jour-là (état transitoire).
@@ -335,12 +344,21 @@ public class DeliveryService {
             log.error("Could not update order status for delivery update: {}", e.getMessage());
         }
 
-        // Après une annulation de livraison, vérifier si le client doit être flagué NON_SERIEUX
+        // Après une annulation, vérifier si le client doit être flagué NON_SERIEUX
         if (newStatus == ShipmentStatus.CANCELLED) {
             Customer customer = shipment.getOrder().getCustomer();
             if (customer != null) {
                 long totalCancelled = shipmentRepository.sumCancelledAttemptsByCustomerId(customer.getId());
                 customerService.recordDeliveryCancellation(customer, totalCancelled);
+            }
+        }
+
+        // Après un refus explicite, vérifier si le client doit être flagué NON_SERIEUX
+        if (newStatus == ShipmentStatus.FAILED_DELIVERY && shipment.getRefusedAttempts() > 0) {
+            Customer customer = shipment.getOrder().getCustomer();
+            if (customer != null) {
+                long totalRefused = shipmentRepository.sumRefusedAttemptsByCustomerId(customer.getId());
+                customerService.recordDeliveryRefusal(customer, totalRefused);
             }
         }
     }
@@ -497,6 +515,7 @@ public class DeliveryService {
             case "en cours de livraison", "sorti en livraison" -> ShipmentStatus.OUT_FOR_DELIVERY;
             case "livré", "livre" -> ShipmentStatus.DELIVERED;
             case "tentative échouée", "tentative echouee", "echec de livraison", "échec de livraison" -> ShipmentStatus.FAILED_DELIVERY;
+            case "refusé", "refuse" -> ShipmentStatus.FAILED_DELIVERY;
             case "retour", "en retour", "retourné", "retourne", "retour en cours" -> ShipmentStatus.RETURNED;
             case "annulé", "annule" -> ShipmentStatus.CANCELLED;
             default -> null;
@@ -572,6 +591,7 @@ public class DeliveryService {
                 .appliedFee(shipment.getAppliedFee())
                 .appliedFeeType(shipment.getAppliedFeeType())
                 .cancelledAttempts(shipment.getCancelledAttempts())
+                .refusedAttempts(shipment.getRefusedAttempts())
                 .trackingHistory(history)
                 .createdAt(shipment.getCreatedAt())
                 .updatedAt(shipment.getUpdatedAt())

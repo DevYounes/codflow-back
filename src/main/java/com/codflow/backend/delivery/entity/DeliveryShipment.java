@@ -104,6 +104,14 @@ public class DeliveryShipment extends BaseEntity {
     @Column(name = "cancelled_attempts", nullable = false)
     private int cancelledAttempts = 0;
 
+    /**
+     * Nombre de fois que le client a explicitement refusé le colis à la porte ("Refusé").
+     * Distinct de cancelled_attempts : un refus est un acte délibéré du client.
+     * Coût immédiat : frais "REFUS" chez Ozon + risque d'emballage dégradé.
+     */
+    @Column(name = "refused_attempts", nullable = false)
+    private int refusedAttempts = 0;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "raw_response", columnDefinition = "jsonb")
     private String rawResponse;

@@ -25,6 +25,8 @@ public class CustomerService {
     private static final int FIDELE_THRESHOLD = 3;
     // Auto-tag as NON_SERIEUX when cumulative delivery cancellations reach this threshold
     private static final int NON_SERIEUX_CANCEL_THRESHOLD = 3;
+    // Un refus est un acte délibéré — seuil plus bas que les annulations
+    private static final int NON_SERIEUX_REFUSAL_THRESHOLD = 2;
 
     private final CustomerRepository customerRepository;
 
@@ -117,6 +119,31 @@ public class CustomerService {
             customerRepository.save(customer);
             log.warn("[CLIENT NON-SERIEUX] {} (id={}) — {} annulations de livraison",
                     customer.getFullName(), customer.getId(), totalCancelled);
+        }
+    }
+
+    /**
+     * Appelé après chaque refus explicite d'un colis ("Refusé" chez Ozon).
+     * Un refus est un acte délibéré du client (pas une absence) — seuil plus bas que les annulations.
+     * Flagué NON_SERIEUX à partir de 2 refus cumulés sur toutes ses commandes.
+     *
+     * @param customer     l'entité cliente (doit être MANAGED dans la transaction courante)
+     * @param totalRefused somme de tous les refused_attempts sur toutes ses commandes
+     */
+    @Transactional
+    public void recordDeliveryRefusal(Customer customer, long totalRefused) {
+        if (customer.getStatus() == CustomerStatus.BLACKLISTED
+                || customer.getStatus() == CustomerStatus.NON_SERIEUX) {
+            return;
+        }
+        if (totalRefused >= NON_SERIEUX_REFUSAL_THRESHOLD) {
+            customer.setStatus(CustomerStatus.NON_SERIEUX);
+            String note = "Flagué automatiquement : " + totalRefused
+                    + " refus explicite(s) du colis à la porte (perte frais livraison).";
+            customer.setNotes(note);
+            customerRepository.save(customer);
+            log.warn("[CLIENT NON-SERIEUX] {} (id={}) — {} refus de livraison à la porte",
+                    customer.getFullName(), customer.getId(), totalRefused);
         }
     }
 

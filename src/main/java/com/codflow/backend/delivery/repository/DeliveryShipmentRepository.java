@@ -54,4 +54,10 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
      */
     @Query("SELECT COALESCE(SUM(s.cancelledAttempts), 0) FROM DeliveryShipment s WHERE s.order.customer.id = :customerId")
     long sumCancelledAttemptsByCustomerId(@Param("customerId") Long customerId);
+
+    /**
+     * Somme de tous les refus explicites du client à la porte pour un client donné.
+     */
+    @Query("SELECT COALESCE(SUM(s.refusedAttempts), 0) FROM DeliveryShipment s WHERE s.order.customer.id = :customerId")
+    long sumRefusedAttemptsByCustomerId(@Param("customerId") Long customerId);
 }
