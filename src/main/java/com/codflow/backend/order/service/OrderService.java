@@ -765,6 +765,30 @@ public class OrderService {
         return result;
     }
 
+    @Transactional
+    public void deleteOrder(Long id) {
+        Order order = getOrderById(id);
+
+        if (order.isStockReserved()) {
+            throw new BusinessException(
+                "Impossible de supprimer cette commande : du stock est encore réservé. " +
+                "Annulez la commande avant de la supprimer.");
+        }
+        if (order.isStockDeducted()) {
+            throw new BusinessException(
+                "Impossible de supprimer une commande livrée dont le stock a déjà été déduit.");
+        }
+        if (order.getStatus() == OrderStatus.LIVRE) {
+            throw new BusinessException(
+                "Impossible de supprimer une commande avec le statut LIVRÉ.");
+        }
+
+        order.setDeleted(true);
+        order.setDeletedAt(LocalDateTime.now());
+        orderRepository.save(order);
+        log.info("[ORDER-DELETE] Commande {} supprimée (soft delete)", order.getOrderNumber());
+    }
+
     private Order getOrderById(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Commande", id));
