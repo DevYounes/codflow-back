@@ -14,6 +14,8 @@ import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.provider.DeliveryProviderAdapter;
 import com.codflow.backend.delivery.provider.DeliveryProviderRegistry;
 import com.codflow.backend.delivery.provider.dto.*;
+import com.codflow.backend.customer.entity.Customer;
+import com.codflow.backend.customer.service.CustomerService;
 import com.codflow.backend.delivery.provider.ozon.OzonCityDto;
 import com.codflow.backend.delivery.provider.ozon.OzonCityService;
 import com.codflow.backend.delivery.repository.DeliveryProviderRepository;
@@ -49,6 +51,7 @@ public class DeliveryService {
     private final OrderService orderService;
     private final DeliveryProviderRegistry providerRegistry;
     private final OzonCityService ozonCityService;
+    private final CustomerService customerService;
 
     @Transactional
     public DeliveryShipmentDto createShipment(CreateShipmentRequest request) {
@@ -311,8 +314,16 @@ public class DeliveryService {
                 shipment.setAppliedFeeType("REFUS");
             }
             case CANCELLED -> {
+                // "Annulé" chez Ozon = tentative de livraison annulée ce jour-là (état transitoire).
+                // Le colis sera redistribué ou retourné lors du prochain cycle.
+                shipment.setCancelledAttempts(shipment.getCancelledAttempts() + 1);
                 shipment.setAppliedFee(java.math.BigDecimal.ZERO);
                 shipment.setAppliedFeeType("ANNULATION");
+                statusUpdate.setStatus(OrderStatus.ECHEC_LIVRAISON);
+                log.info("[DELIVERY-CANCELLED] Colis {} — tentative #{} annulée pour commande {}",
+                        shipment.getTrackingNumber(),
+                        shipment.getCancelledAttempts(),
+                        shipment.getOrder().getOrderNumber());
             }
             default -> { return; }
         }
@@ -322,6 +333,15 @@ public class DeliveryService {
             orderService.updateStatus(shipment.getOrder().getId(), statusUpdate, null);
         } catch (Exception e) {
             log.error("Could not update order status for delivery update: {}", e.getMessage());
+        }
+
+        // Après une annulation de livraison, vérifier si le client doit être flagué NON_SERIEUX
+        if (newStatus == ShipmentStatus.CANCELLED) {
+            Customer customer = shipment.getOrder().getCustomer();
+            if (customer != null) {
+                long totalCancelled = shipmentRepository.sumCancelledAttemptsByCustomerId(customer.getId());
+                customerService.recordDeliveryCancellation(customer, totalCancelled);
+            }
         }
     }
 
@@ -551,6 +571,7 @@ public class DeliveryService {
                 .refusedPrice(shipment.getRefusedPrice())
                 .appliedFee(shipment.getAppliedFee())
                 .appliedFeeType(shipment.getAppliedFeeType())
+                .cancelledAttempts(shipment.getCancelledAttempts())
                 .trackingHistory(history)
                 .createdAt(shipment.getCreatedAt())
                 .updatedAt(shipment.getUpdatedAt())

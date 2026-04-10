@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.data.repository.query.Param;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -24,8 +26,10 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
 
     List<DeliveryShipment> findByStatus(ShipmentStatus status);
 
+    // CANCELLED est un état transitoire chez Ozon ("Annulé" = tentative annulée, pas le colis définitivement).
+    // Le colis peut encore être redistribué ou retourné → on continue à le synchroniser.
     @Query("SELECT s FROM DeliveryShipment s WHERE s.status NOT IN " +
-           "('DELIVERED', 'RETURNED', 'CANCELLED') AND s.trackingNumber IS NOT NULL")
+           "('DELIVERED', 'RETURNED') AND s.trackingNumber IS NOT NULL")
     List<DeliveryShipment> findActiveShipments();
 
     /**
@@ -43,4 +47,11 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
     Page<DeliveryShipment> findByProviderId(Long providerId, Pageable pageable);
 
     long countByStatus(ShipmentStatus status);
+
+    /**
+     * Somme de toutes les tentatives d'annulation de livraison pour un client donné.
+     * Traverse : DeliveryShipment → Order → Customer.
+     */
+    @Query("SELECT COALESCE(SUM(s.cancelledAttempts), 0) FROM DeliveryShipment s WHERE s.order.customer.id = :customerId")
+    long sumCancelledAttemptsByCustomerId(@Param("customerId") Long customerId);
 }

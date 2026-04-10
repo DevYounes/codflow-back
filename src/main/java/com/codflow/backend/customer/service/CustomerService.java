@@ -23,6 +23,8 @@ public class CustomerService {
 
     // Auto-tag as FIDELE when confirmed orders reach this threshold
     private static final int FIDELE_THRESHOLD = 3;
+    // Auto-tag as NON_SERIEUX when cumulative delivery cancellations reach this threshold
+    private static final int NON_SERIEUX_CANCEL_THRESHOLD = 3;
 
     private final CustomerRepository customerRepository;
 
@@ -90,6 +92,32 @@ public class CustomerService {
         customer.setStatus(status);
         if (notes != null) customer.setNotes(notes);
         return toDto(customerRepository.save(customer));
+    }
+
+    /**
+     * Appelé après chaque annulation de livraison Ozon ("Annulé").
+     * Si le total des tentatives annulées atteint le seuil, le client est tagué NON_SERIEUX.
+     * Ne déclasse jamais un client déjà FIDELE ou BLACKLISTED.
+     *
+     * @param customer        l'entité cliente (doit être MANAGED dans la transaction courante)
+     * @param totalCancelled  somme de tous les cancelled_attempts sur toutes ses commandes
+     */
+    @Transactional
+    public void recordDeliveryCancellation(Customer customer, long totalCancelled) {
+        // Ne pas écraser les statuts manuels plus graves
+        if (customer.getStatus() == CustomerStatus.BLACKLISTED
+                || customer.getStatus() == CustomerStatus.NON_SERIEUX) {
+            return;
+        }
+        if (totalCancelled >= NON_SERIEUX_CANCEL_THRESHOLD) {
+            customer.setStatus(CustomerStatus.NON_SERIEUX);
+            String note = "Flagué automatiquement : " + totalCancelled
+                    + " tentative(s) de livraison annulée(s) par le transporteur.";
+            customer.setNotes(note);
+            customerRepository.save(customer);
+            log.warn("[CLIENT NON-SERIEUX] {} (id={}) — {} annulations de livraison",
+                    customer.getFullName(), customer.getId(), totalCancelled);
+        }
     }
 
     /**
