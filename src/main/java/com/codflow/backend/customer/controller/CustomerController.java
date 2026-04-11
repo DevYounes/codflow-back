@@ -27,7 +27,7 @@ public class CustomerController {
     private final CustomerService customerService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Liste des clients avec filtres")
     public ResponseEntity<ApiResponse<Page<CustomerDto>>> getCustomers(
             @RequestParam(required = false) CustomerStatus status,
@@ -46,7 +46,7 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Détail d'un client avec ses statistiques")
     public ResponseEntity<ApiResponse<CustomerDto>> getCustomer(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(customerService.getCustomer(id)));
