@@ -36,6 +36,7 @@ public class CreateOrderRequest {
     private String ville;
     private String zipCode;
     private String notes;
+    private String deliveryNotes;
 
     private BigDecimal shippingCost = BigDecimal.ZERO;
 

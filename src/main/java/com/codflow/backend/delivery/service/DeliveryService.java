@@ -556,7 +556,8 @@ public class DeliveryService {
                 .zipCode(order.getZipCode())
                 .codAmount(order.getTotalAmount())
                 .shippingCost(order.getShippingCost())
-                .notes(order.getNotes())
+                .notes(order.getDeliveryNotes() != null && !order.getDeliveryNotes().isBlank()
+                        ? order.getDeliveryNotes() : order.getNotes())
                 .items(items)
                 .exchange(order.isExchange())
                 .build();

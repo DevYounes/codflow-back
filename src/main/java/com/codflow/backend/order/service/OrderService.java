@@ -91,6 +91,7 @@ public class OrderService {
 
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
+        order.setDeliveryNotes(request.getDeliveryNotes());
         order.setShippingCost(request.getShippingCost() != null ? request.getShippingCost() : java.math.BigDecimal.ZERO);
         order.setShopifyOrderId(request.getShopifyOrderId());
         order.setExternalRef(request.getExternalRef());
@@ -358,6 +359,7 @@ public class OrderService {
                 ? request.getCity() : request.getVille());
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
+        order.setDeliveryNotes(request.getDeliveryNotes());
         if (request.getShippingCost() != null) {
             order.setShippingCost(request.getShippingCost());
         }
@@ -844,6 +846,7 @@ public class OrderService {
                 .deliveryCityId(order.getDeliveryCityId())
                 .zipCode(order.getZipCode())
                 .notes(order.getNotes())
+                .deliveryNotes(order.getDeliveryNotes())
                 .subtotal(order.getSubtotal())
                 .shippingCost(order.getShippingCost())
                 .totalAmount(order.getTotalAmount())
