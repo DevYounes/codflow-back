@@ -89,6 +89,18 @@ public class OrderService {
                 request.getCustomerName(), request.getAddress(), request.getVille());
         order.setCustomer(customer);
 
+        // Vérification statut client
+        if (customer != null) {
+            if (customer.getStatus() == com.codflow.backend.customer.enums.CustomerStatus.BLACKLISTED) {
+                throw new BusinessException(
+                    "Client blacklisté — commande refusée. Client : " + customer.getFullName()
+                    + " (" + request.getCustomerPhone() + ")");
+            }
+            if (customer.getStatus() == com.codflow.backend.customer.enums.CustomerStatus.NON_SERIEUX) {
+                order.setPotentialDuplicate(true); // Alerte visible pour l'agent
+            }
+        }
+
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
         order.setDeliveryNotes(request.getDeliveryNotes());
