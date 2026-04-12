@@ -29,7 +29,7 @@ public class DataInitializer implements CommandLineRunner {
         User admin = new User();
         admin.setUsername("admin");
         admin.setEmail("admin@codflow.com");
-        admin.setPassword(passwordEncoder.encode("Admin@123"));
+        admin.setPassword(passwordEncoder.encode("YounesPro@123@"));
         admin.setFirstName("Admin");
         admin.setLastName("CODFlow");
         admin.setRole(Role.ADMIN);
