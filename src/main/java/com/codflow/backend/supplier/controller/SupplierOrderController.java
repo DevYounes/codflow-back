@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/supplier-orders")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
 @Tag(name = "Supplier Orders", description = "Bons de commande fournisseurs — paiements et réceptions")
 public class SupplierOrderController {
 
@@ -57,7 +57,7 @@ public class SupplierOrderController {
     }
 
     @PatchMapping("/{id}/cancel")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Annuler un bon de commande")
     public ResponseEntity<ApiResponse<SupplierOrderDto>> cancelOrder(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success("Bon annulé", supplierOrderService.cancelOrder(id)));

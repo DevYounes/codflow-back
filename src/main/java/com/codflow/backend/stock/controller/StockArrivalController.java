@@ -28,7 +28,7 @@ public class StockArrivalController {
     private final StockArrivalService arrivalService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(
         summary = "Créer un arrivage",
         description = """
@@ -45,7 +45,7 @@ public class StockArrivalController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Lister tous les arrivages (paginé)")
     public ResponseEntity<ApiResponse<Page<StockArrivalDto>>> listArrivals(
             @RequestParam(defaultValue = "0")       int page,
@@ -57,14 +57,14 @@ public class StockArrivalController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Détail d'un arrivage")
     public ResponseEntity<ApiResponse<StockArrivalDto>> getArrival(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(arrivalService.getArrival(id)));
     }
 
     @GetMapping("/product/{productId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Historique des arrivages pour un produit")
     public ResponseEntity<ApiResponse<List<StockArrivalDto>>> listByProduct(@PathVariable Long productId) {
         return ResponseEntity.ok(ApiResponse.success(arrivalService.listByProduct(productId)));

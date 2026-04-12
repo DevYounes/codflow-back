@@ -43,6 +43,7 @@ public class OrderController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Lister les commandes avec filtres")
     public ResponseEntity<ApiResponse<PageResponse<OrderDto>>> getOrders(
             @RequestParam(required = false) OrderStatus status,
@@ -73,6 +74,7 @@ public class OrderController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Obtenir une commande par ID")
     public ResponseEntity<ApiResponse<OrderDto>> getOrder(
             @PathVariable Long id,
@@ -90,6 +92,7 @@ public class OrderController {
     }
 
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Mettre à jour le statut d'une commande")
     public ResponseEntity<ApiResponse<OrderDto>> updateStatus(
             @PathVariable Long id,

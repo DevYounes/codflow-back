@@ -43,7 +43,7 @@ public class DeliveryController {
     private final DeliveryProviderRegistry providerRegistry;
 
     @GetMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Lister les envois avec filtres optionnels")
     public ResponseEntity<ApiResponse<org.springframework.data.domain.Page<DeliveryShipmentDto>>> listShipments(
             @RequestParam(required = false) List<ShipmentStatus> status,
@@ -60,14 +60,14 @@ public class DeliveryController {
     }
 
     @GetMapping("/shipments/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Obtenir un envoi par ID")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> getShipment(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(deliveryService.getShipmentById(id)));
     }
 
     @PostMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Créer un envoi pour une commande confirmée")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> createShipment(
             @Valid @RequestBody CreateShipmentRequest request) {
@@ -75,7 +75,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/pickup")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Demander un ramassage auprès du transporteur")
     public ResponseEntity<ApiResponse<Void>> requestPickup(@Valid @RequestBody RequestPickupDto request) {
         deliveryService.requestPickup(request);
@@ -89,7 +89,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/shipments/{id}/sync")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Synchroniser le suivi d'un envoi")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> syncTracking(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success("Suivi mis à jour", deliveryService.syncTracking(id)));
@@ -100,7 +100,7 @@ public class DeliveryController {
     // =========================================================================
 
     @GetMapping("/returns")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(
         summary = "Colis en attente de retour physique",
         description = """
@@ -115,7 +115,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/shipments/{id}/confirm-return")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(
         summary = "Confirmer la réception physique d'un colis retourné",
         description = """
@@ -177,7 +177,7 @@ public class DeliveryController {
     // =========================================================================
 
     @PostMapping("/notes")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(
         summary = "Créer un bon de livraison (BL)",
         description = """
@@ -200,7 +200,7 @@ public class DeliveryController {
     }
 
     @GetMapping("/notes")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Lister les bons de livraison")
     public ResponseEntity<ApiResponse<Page<DeliveryNoteDto>>> listDeliveryNotes(
             @RequestParam(defaultValue = "0")    int page,
@@ -214,14 +214,14 @@ public class DeliveryController {
     }
 
     @GetMapping("/notes/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Obtenir un bon de livraison par ID")
     public ResponseEntity<ApiResponse<DeliveryNoteDto>> getDeliveryNote(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(deliveryNoteService.getNote(id)));
     }
 
     @GetMapping("/notes/ref/{ref}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
     @Operation(summary = "Obtenir un bon de livraison par référence BL")
     public ResponseEntity<ApiResponse<DeliveryNoteDto>> getDeliveryNoteByRef(@PathVariable String ref) {
         return ResponseEntity.ok(ApiResponse.success(deliveryNoteService.getNoteByRef(ref)));

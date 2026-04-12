@@ -29,7 +29,7 @@ public class StockController {
     private final StockService stockService;
 
     @PostMapping("/adjust")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Ajuster le stock d'un produit")
     public ResponseEntity<ApiResponse<StockMovementDto>> adjustStock(
             @Valid @RequestBody AdjustStockRequest request,
@@ -38,7 +38,7 @@ public class StockController {
     }
 
     @GetMapping("/movements")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Historique des mouvements de stock")
     public ResponseEntity<ApiResponse<PageResponse<StockMovementDto>>> getMovements(
             @RequestParam(required = false) Long productId,
@@ -49,14 +49,14 @@ public class StockController {
     }
 
     @GetMapping("/alerts")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Obtenir les alertes de stock actives")
     public ResponseEntity<ApiResponse<List<StockAlertDto>>> getActiveAlerts() {
         return ResponseEntity.ok(ApiResponse.success(stockService.getActiveAlerts()));
     }
 
     @PutMapping("/alerts/{id}/resolve")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
     @Operation(summary = "Résoudre une alerte de stock")
     public ResponseEntity<ApiResponse<Void>> resolveAlert(@PathVariable Long id,
                                                            @AuthenticationPrincipal UserPrincipal principal) {
