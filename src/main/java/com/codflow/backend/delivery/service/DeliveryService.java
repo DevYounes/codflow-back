@@ -14,6 +14,8 @@ import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.provider.DeliveryProviderAdapter;
 import com.codflow.backend.delivery.provider.DeliveryProviderRegistry;
 import com.codflow.backend.delivery.provider.dto.*;
+import com.codflow.backend.customer.entity.Customer;
+import com.codflow.backend.customer.service.CustomerService;
 import com.codflow.backend.delivery.provider.ozon.OzonCityDto;
 import com.codflow.backend.delivery.provider.ozon.OzonCityService;
 import com.codflow.backend.delivery.repository.DeliveryProviderRepository;
@@ -49,6 +51,7 @@ public class DeliveryService {
     private final OrderService orderService;
     private final DeliveryProviderRegistry providerRegistry;
     private final OzonCityService ozonCityService;
+    private final CustomerService customerService;
 
     @Transactional
     public DeliveryShipmentDto createShipment(CreateShipmentRequest request) {
@@ -300,19 +303,39 @@ public class DeliveryService {
             case RETURNED -> {
                 shipment.setReturnedAt(now);
                 statusUpdate.setStatus(OrderStatus.RETOURNE);
+                // Stock différé : sera libéré à la confirmation physique (confirmReturnReceived),
+                // pas maintenant — le colis est encore chez Ozon en transit retour.
+                statusUpdate.setDeferReturnStock(true);
                 // RETURNED-PRICE (souvent 0 MAD chez Ozon)
                 shipment.setAppliedFee(shipment.getReturnedPrice());
                 shipment.setAppliedFeeType("RETOUR");
             }
             case FAILED_DELIVERY -> {
                 statusUpdate.setStatus(OrderStatus.ECHEC_LIVRAISON);
-                // Client a refusé à la porte → REFUSED-PRICE
                 shipment.setAppliedFee(shipment.getRefusedPrice());
                 shipment.setAppliedFeeType("REFUS");
+                // Distinguer un refus explicite du client ("Refusé") d'une tentative échouée neutre.
+                // providerStatusLabel est déjà mis à jour juste avant l'appel à updateShipmentStatus().
+                String label = shipment.getProviderStatusLabel();
+                if (label != null && label.toLowerCase().contains("refus")) {
+                    shipment.setRefusedAttempts(shipment.getRefusedAttempts() + 1);
+                    log.info("[DELIVERY-REFUSED] Colis {} — refus #{} par le client pour commande {}",
+                            shipment.getTrackingNumber(),
+                            shipment.getRefusedAttempts(),
+                            shipment.getOrder().getOrderNumber());
+                }
             }
             case CANCELLED -> {
+                // "Annulé" chez Ozon = tentative de livraison annulée ce jour-là (état transitoire).
+                // Le colis sera redistribué ou retourné lors du prochain cycle.
+                shipment.setCancelledAttempts(shipment.getCancelledAttempts() + 1);
                 shipment.setAppliedFee(java.math.BigDecimal.ZERO);
                 shipment.setAppliedFeeType("ANNULATION");
+                statusUpdate.setStatus(OrderStatus.ECHEC_LIVRAISON);
+                log.info("[DELIVERY-CANCELLED] Colis {} — tentative #{} annulée pour commande {}",
+                        shipment.getTrackingNumber(),
+                        shipment.getCancelledAttempts(),
+                        shipment.getOrder().getOrderNumber());
             }
             default -> { return; }
         }
@@ -322,6 +345,24 @@ public class DeliveryService {
             orderService.updateStatus(shipment.getOrder().getId(), statusUpdate, null);
         } catch (Exception e) {
             log.error("Could not update order status for delivery update: {}", e.getMessage());
+        }
+
+        // Après une annulation, vérifier si le client doit être flagué NON_SERIEUX
+        if (newStatus == ShipmentStatus.CANCELLED) {
+            Customer customer = shipment.getOrder().getCustomer();
+            if (customer != null) {
+                long totalCancelled = shipmentRepository.sumCancelledAttemptsByCustomerId(customer.getId());
+                customerService.recordDeliveryCancellation(customer, totalCancelled);
+            }
+        }
+
+        // Après un refus explicite, vérifier si le client doit être flagué NON_SERIEUX
+        if (newStatus == ShipmentStatus.FAILED_DELIVERY && shipment.getRefusedAttempts() > 0) {
+            Customer customer = shipment.getOrder().getCustomer();
+            if (customer != null) {
+                long totalRefused = shipmentRepository.sumRefusedAttemptsByCustomerId(customer.getId());
+                customerService.recordDeliveryRefusal(customer, totalRefused);
+            }
         }
     }
 
@@ -417,7 +458,16 @@ public class DeliveryService {
             shipment.setReturnReceivedNotes(request.getNotes());
         }
 
-        log.info("[RETOUR CONFIRMÉ] Colis {} (commande {}) — reçu physiquement",
+        // Libération du stock au moment de la réception physique — pas avant.
+        // (le stock était différé depuis le "Retourné" Ozon via deferReturnStock)
+        try {
+            orderService.processPhysicalReturn(shipment.getOrder().getId());
+        } catch (Exception e) {
+            log.error("[RETOUR CONFIRMÉ] Erreur lors de la mise à jour du stock pour commande {}: {}",
+                    shipment.getOrder().getOrderNumber(), e.getMessage());
+        }
+
+        log.info("[RETOUR CONFIRMÉ] Colis {} (commande {}) — reçu physiquement, stock mis à jour",
                 shipment.getTrackingNumber(), shipment.getOrder().getOrderNumber());
         return toDto(shipmentRepository.save(shipment), false);
     }
@@ -477,6 +527,7 @@ public class DeliveryService {
             case "en cours de livraison", "sorti en livraison" -> ShipmentStatus.OUT_FOR_DELIVERY;
             case "livré", "livre" -> ShipmentStatus.DELIVERED;
             case "tentative échouée", "tentative echouee", "echec de livraison", "échec de livraison" -> ShipmentStatus.FAILED_DELIVERY;
+            case "refusé", "refuse" -> ShipmentStatus.FAILED_DELIVERY;
             case "retour", "en retour", "retourné", "retourne", "retour en cours" -> ShipmentStatus.RETURNED;
             case "annulé", "annule" -> ShipmentStatus.CANCELLED;
             default -> null;
@@ -505,7 +556,8 @@ public class DeliveryService {
                 .zipCode(order.getZipCode())
                 .codAmount(order.getTotalAmount())
                 .shippingCost(order.getShippingCost())
-                .notes(order.getNotes())
+                .notes(order.getDeliveryNotes() != null && !order.getDeliveryNotes().isBlank()
+                        ? order.getDeliveryNotes() : order.getNotes())
                 .items(items)
                 .exchange(order.isExchange())
                 .build();
@@ -551,6 +603,8 @@ public class DeliveryService {
                 .refusedPrice(shipment.getRefusedPrice())
                 .appliedFee(shipment.getAppliedFee())
                 .appliedFeeType(shipment.getAppliedFeeType())
+                .cancelledAttempts(shipment.getCancelledAttempts())
+                .refusedAttempts(shipment.getRefusedAttempts())
                 .trackingHistory(history)
                 .createdAt(shipment.getCreatedAt())
                 .updatedAt(shipment.getUpdatedAt())

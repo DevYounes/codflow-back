@@ -4,6 +4,8 @@ import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.security.JwtTokenProvider;
+import com.codflow.backend.security.RefreshToken;
+import com.codflow.backend.security.RefreshTokenService;
 import com.codflow.backend.security.UserPrincipal;
 import com.codflow.backend.team.dto.*;
 import com.codflow.backend.team.entity.User;
@@ -15,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,6 +35,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
+    private final RefreshTokenService refreshTokenService;
 
     @Value("${app.jwt.expiration-ms}")
     private long jwtExpirationMs;
@@ -41,14 +45,16 @@ public class UserService {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsernameOrEmail(), request.getPassword())
         );
-        String token = tokenProvider.generateToken(authentication);
+        String accessToken = tokenProvider.generateToken(authentication);
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         User user = userRepository.findById(principal.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", principal.getId()));
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
         return LoginResponse.builder()
-                .accessToken(token)
+                .accessToken(accessToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtExpirationMs / 1000)
+                .refreshToken(refreshToken.getToken())
                 .user(toDto(user))
                 .build();
     }
@@ -120,6 +126,31 @@ public class UserService {
     public void activateUser(Long id) {
         User user = getUserById(id);
         user.setActive(true);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public UserDto updateProfile(Long userId, UpdateProfileRequest request) {
+        User user = getUserById(userId);
+        if (StringUtils.hasText(request.getFirstName())) user.setFirstName(request.getFirstName());
+        if (StringUtils.hasText(request.getLastName())) user.setLastName(request.getLastName());
+        if (StringUtils.hasText(request.getEmail())) {
+            if (!user.getEmail().equals(request.getEmail()) && userRepository.existsByEmail(request.getEmail())) {
+                throw new BusinessException("Cet email est déjà utilisé");
+            }
+            user.setEmail(request.getEmail());
+        }
+        if (StringUtils.hasText(request.getPhone())) user.setPhone(request.getPhone());
+        return toDto(userRepository.save(user));
+    }
+
+    @Transactional
+    public void changePassword(Long userId, ChangePasswordRequest request) {
+        User user = getUserById(userId);
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new BadCredentialsException("Mot de passe actuel incorrect");
+        }
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
     }
 

@@ -1,0 +1,3 @@
+ALTER TABLE order_items
+    ADD COLUMN IF NOT EXISTS variant_color VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS variant_size  VARCHAR(50);

@@ -25,6 +25,7 @@ public class OrderDto {
     private String deliveryCityId;
     private String zipCode;
     private String notes;
+    private String deliveryNotes;
     private BigDecimal subtotal;
     private BigDecimal shippingCost;
     private BigDecimal totalAmount;

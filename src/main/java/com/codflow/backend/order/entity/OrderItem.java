@@ -42,6 +42,12 @@ public class OrderItem {
     @Column(name = "product_sku", length = 100)
     private String productSku;
 
+    @Column(name = "variant_color", length = 100)
+    private String variantColor;
+
+    @Column(name = "variant_size", length = 50)
+    private String variantSize;
+
     @Column(nullable = false)
     private int quantity = 1;
 
