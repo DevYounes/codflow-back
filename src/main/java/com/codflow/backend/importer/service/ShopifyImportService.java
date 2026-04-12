@@ -488,8 +488,66 @@ public class ShopifyImportService {
 
             items.add(item);
         }
+
+        // Offres "achetez 2 produits" : Shopify peut envoyer une variante par défaut
+        // (ex: pointure 39) pour les articles supplémentaires au lieu de la variante
+        // choisie par le client. On aligne donc la pointure des articles suivants sur
+        // celle du premier article.
+        alignSizesOnFirstItem(items);
+
         req.setItems(items);
         return req;
+    }
+
+    /**
+     * Aligne la pointure des articles 2+ sur celle du premier article.
+     * Si le premier article a une variante avec une pointure, les articles
+     * suivants sont réassociés à la variante du même produit qui possède
+     * cette pointure (si elle existe).
+     */
+    private void alignSizesOnFirstItem(List<CreateOrderRequest.OrderItemRequest> items) {
+        if (items == null || items.size() < 2) return;
+
+        CreateOrderRequest.OrderItemRequest first = items.get(0);
+        if (first.getVariantId() == null) return;
+
+        ProductVariant firstVariant = variantRepository.findById(first.getVariantId()).orElse(null);
+        if (firstVariant == null || blank(firstVariant.getSize())) return;
+
+        String referenceSize = firstVariant.getSize();
+
+        for (int i = 1; i < items.size(); i++) {
+            CreateOrderRequest.OrderItemRequest it = items.get(i);
+            if (it.getProductId() == null) continue;
+
+            // Déjà sur la bonne pointure → rien à faire
+            if (it.getVariantId() != null) {
+                ProductVariant current = variantRepository.findById(it.getVariantId()).orElse(null);
+                if (current != null && referenceSize.equalsIgnoreCase(current.getSize())) continue;
+            }
+
+            var match = variantRepository.findFirstByProductIdAndSizeIgnoreCase(it.getProductId(), referenceSize);
+            if (match.isEmpty()) {
+                log.warn("[SIZE-ALIGN] Article #{} '{}' : variante pointure '{}' introuvable pour produit id={} — aucun réalignement",
+                        i + 1, it.getProductName(), referenceSize, it.getProductId());
+                continue;
+            }
+
+            ProductVariant target = match.get();
+            Long previousVariantId = it.getVariantId();
+            it.setVariantId(target.getId());
+            if (target.getVariantSku() != null) it.setProductSku(target.getVariantSku());
+
+            // Recompose le nom affiché avec la nouvelle variante
+            String baseName = target.getProduct() != null ? target.getProduct().getName() : it.getProductName();
+            String suffix = blank(target.getColor())
+                    ? target.getSize()
+                    : target.getColor() + " / " + target.getSize();
+            it.setProductName(baseName + " - " + suffix);
+
+            log.info("[SIZE-ALIGN] Article #{} aligné sur pointure '{}' : variante {} → {} ({})",
+                    i + 1, referenceSize, previousVariantId, target.getId(), it.getProductName());
+        }
     }
 
     private BigDecimal parseBigDecimal(String val) {
