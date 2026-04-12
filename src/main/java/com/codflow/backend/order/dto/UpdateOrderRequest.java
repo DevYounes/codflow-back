@@ -29,6 +29,7 @@ public class UpdateOrderRequest {
 
     private String zipCode;
     private String notes;
+    private String deliveryNotes;
     private BigDecimal shippingCost;
 
     private String shopifyOrderId;

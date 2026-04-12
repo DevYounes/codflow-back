@@ -6,8 +6,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
+
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,8 +27,10 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
 
     List<DeliveryShipment> findByStatus(ShipmentStatus status);
 
+    // CANCELLED est un état transitoire chez Ozon ("Annulé" = tentative annulée, pas le colis définitivement).
+    // Le colis peut encore être redistribué ou retourné → on continue à le synchroniser.
     @Query("SELECT s FROM DeliveryShipment s WHERE s.status NOT IN " +
-           "('DELIVERED', 'RETURNED', 'CANCELLED') AND s.trackingNumber IS NOT NULL")
+           "('DELIVERED', 'RETURNED') AND s.trackingNumber IS NOT NULL")
     List<DeliveryShipment> findActiveShipments();
 
     /**
@@ -43,4 +48,25 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
     Page<DeliveryShipment> findByProviderId(Long providerId, Pageable pageable);
 
     long countByStatus(ShipmentStatus status);
+
+    @Modifying
+    @Query(value = "DELETE FROM delivery_note_shipments WHERE shipment_id IN (SELECT id FROM delivery_shipments WHERE order_id IN :orderIds)", nativeQuery = true)
+    void deleteNoteShipmentLinksByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    @Modifying
+    @Query(value = "DELETE FROM delivery_shipments WHERE order_id IN :orderIds", nativeQuery = true)
+    void deleteAllByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    /**
+     * Somme de toutes les tentatives d'annulation de livraison pour un client donné.
+     * Traverse : DeliveryShipment → Order → Customer.
+     */
+    @Query("SELECT COALESCE(SUM(s.cancelledAttempts), 0) FROM DeliveryShipment s WHERE s.order.customer.id = :customerId")
+    long sumCancelledAttemptsByCustomerId(@Param("customerId") Long customerId);
+
+    /**
+     * Somme de tous les refus explicites du client à la porte pour un client donné.
+     */
+    @Query("SELECT COALESCE(SUM(s.refusedAttempts), 0) FROM DeliveryShipment s WHERE s.order.customer.id = :customerId")
+    long sumRefusedAttemptsByCustomerId(@Param("customerId") Long customerId);
 }

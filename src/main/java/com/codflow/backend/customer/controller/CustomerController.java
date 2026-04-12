@@ -9,9 +9,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +24,7 @@ public class CustomerController {
     private final CustomerService customerService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Liste des clients avec filtres")
     public ResponseEntity<ApiResponse<Page<CustomerDto>>> getCustomers(
             @RequestParam(required = false) CustomerStatus status,
@@ -37,29 +34,36 @@ public class CustomerController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
 
-        Sort sort = sortDir.equalsIgnoreCase("asc")
-                ? Sort.by(sortBy).ascending()
-                : Sort.by(sortBy).descending();
-        Pageable pageable = PageRequest.of(page, size, sort);
         return ResponseEntity.ok(ApiResponse.success(
-                customerService.getCustomers(status, search, pageable)));
+                customerService.getCustomers(status, search, page, size, sortBy, sortDir)));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Détail d'un client avec ses statistiques")
     public ResponseEntity<ApiResponse<CustomerDto>> getCustomer(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(customerService.getCustomer(id)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Mettre à jour les infos d'un client")
     public ResponseEntity<ApiResponse<CustomerDto>> updateCustomer(
             @PathVariable Long id,
             @RequestBody UpdateCustomerRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
                 "Client mis à jour", customerService.update(id, request)));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Supprimer un client",
+        description = "Suppression définitive du client et de toutes ses commandes."
+    )
+    public ResponseEntity<ApiResponse<Void>> deleteCustomer(@PathVariable Long id) {
+        customerService.deleteCustomer(id);
+        return ResponseEntity.ok(ApiResponse.success("Client supprimé"));
     }
 
     @PatchMapping("/{id}/status")

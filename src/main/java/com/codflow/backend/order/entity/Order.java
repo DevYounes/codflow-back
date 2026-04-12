@@ -9,6 +9,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -20,6 +21,7 @@ import java.util.List;
 @NoArgsConstructor
 @Entity
 @Table(name = "orders")
+@SQLRestriction("deleted = false")
 public class Order extends BaseEntity {
 
     @Column(name = "order_number", unique = true, nullable = false, length = 100)
@@ -63,6 +65,10 @@ public class Order extends BaseEntity {
 
     @Column(columnDefinition = "TEXT")
     private String notes;
+
+    /** Remarque de livraison — envoyée en parcel-note à la société de livraison. */
+    @Column(name = "delivery_notes", columnDefinition = "TEXT")
+    private String deliveryNotes;
 
     // Financial
     @Column(nullable = false, precision = 10, scale = 2)
@@ -131,6 +137,13 @@ public class Order extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_order_id")
     private Order sourceOrder;
+
+    // Soft delete
+    @Column(nullable = false)
+    private boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     // Items
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

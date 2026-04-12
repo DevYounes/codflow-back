@@ -89,8 +89,10 @@ public class OrderService {
                 request.getCustomerName(), request.getAddress(), request.getVille());
         order.setCustomer(customer);
 
+
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
+        order.setDeliveryNotes(request.getDeliveryNotes());
         order.setShippingCost(request.getShippingCost() != null ? request.getShippingCost() : java.math.BigDecimal.ZERO);
         order.setShopifyOrderId(request.getShopifyOrderId());
         order.setExternalRef(request.getExternalRef());
@@ -98,25 +100,7 @@ public class OrderService {
 
         // Add items
         for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
-            OrderItem item = new OrderItem();
-            item.setProductName(itemReq.getProductName());
-            item.setProductSku(itemReq.getProductSku());
-            item.setQuantity(itemReq.getQuantity());
-            item.setUnitPrice(itemReq.getUnitPrice());
-
-            if (itemReq.getProductId() != null) {
-                productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
-            }
-            if (itemReq.getVariantId() != null) {
-                productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
-                    item.setVariant(v);
-                    if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
-                        item.setUnitPrice(v.getPriceOverride());
-                    }
-                });
-            }
-            item.calculateTotalPrice();
-            order.addItem(item);
+            order.addItem(buildOrderItem(itemReq));
         }
         order.recalculateTotals();
 
@@ -197,24 +181,7 @@ public class OrderService {
 
         // Articles du nouvel échange
         for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
-            OrderItem item = new OrderItem();
-            item.setProductName(itemReq.getProductName());
-            item.setProductSku(itemReq.getProductSku());
-            item.setQuantity(itemReq.getQuantity());
-            item.setUnitPrice(itemReq.getUnitPrice());
-            if (itemReq.getProductId() != null) {
-                productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
-            }
-            if (itemReq.getVariantId() != null) {
-                productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
-                    item.setVariant(v);
-                    if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
-                        item.setUnitPrice(v.getPriceOverride());
-                    }
-                });
-            }
-            item.calculateTotalPrice();
-            exchange.addItem(item);
+            exchange.addItem(buildOrderItem(itemReq));
         }
         exchange.recalculateTotals();
 
@@ -271,8 +238,12 @@ public class OrderService {
         boolean shouldReserve   = newStatus.isConfirmed() && order.getConfirmedAt() == null && !order.isStockReserved();
         boolean shouldDeduct    = newStatus.isDelivered()  && !order.isStockDeducted() && order.isStockReserved();
         boolean shouldRelease   = newStatus == OrderStatus.ANNULE  && order.isStockReserved();
-        boolean shouldRestoreReserve  = newStatus == OrderStatus.RETOURNE && order.isStockReserved();
-        boolean shouldRestoreDeducted = newStatus == OrderStatus.RETOURNE && !order.isStockReserved() && order.isStockDeducted();
+        // deferReturnStock = true quand c'est DeliveryService qui appelle :
+        // le stock sera libéré à la confirmation physique (confirmReturnReceived), pas maintenant.
+        boolean shouldRestoreReserve  = newStatus == OrderStatus.RETOURNE && order.isStockReserved()
+                && !request.isDeferReturnStock();
+        boolean shouldRestoreDeducted = newStatus == OrderStatus.RETOURNE && !order.isStockReserved()
+                && order.isStockDeducted() && !request.isDeferReturnStock();
 
         // ── Vérification stock AVANT toute modification ──────────────────────────
         if (shouldReserve) {
@@ -307,7 +278,7 @@ public class OrderService {
             order.setStockReserved(false);
         }
 
-        if (newStatus == OrderStatus.RETOURNE) {
+        if (newStatus == OrderStatus.RETOURNE && !request.isDeferReturnStock()) {
             if (shouldRestoreReserve)  order.setStockReserved(false);
             if (shouldRestoreDeducted) order.setStockDeducted(false);
         }
@@ -332,6 +303,48 @@ public class OrderService {
         return toDto(getOrderById(orderId), true);
     }
 
+    /**
+     * Applique les opérations stock suite à la confirmation physique d'un retour.
+     * Appelé par DeliveryService.confirmReturnReceived() — jamais depuis updateStatus().
+     *
+     * Deux cas :
+     *  - stockReserved = true  → colis retourné avant livraison : libère la réservation
+     *  - stockDeducted = true  → colis retourné après livraison  : restaure le stock physique
+     *
+     * Respecte le pattern saveAndFlush AVANT les opérations @Modifying stock
+     * pour éviter l'écrasement du L1 cache Hibernate (cf. CLAUDE.md).
+     */
+    @Transactional
+    public void processPhysicalReturn(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Commande", orderId));
+
+        boolean shouldRestoreReserve  = order.isStockReserved();
+        boolean shouldRestoreDeducted = !order.isStockReserved() && order.isStockDeducted();
+
+        if (!shouldRestoreReserve && !shouldRestoreDeducted) {
+            log.debug("[RETOUR PHYSIQUE] Commande {} — aucune opération stock nécessaire (déjà traité ou pas de stock)",
+                    order.getOrderNumber());
+            return;
+        }
+
+        // Mise à jour des flags avant saveAndFlush
+        if (shouldRestoreReserve)  order.setStockReserved(false);
+        if (shouldRestoreDeducted) order.setStockDeducted(false);
+        orderRepository.saveAndFlush(order);
+
+        // Opérations stock (peuvent vider le L1 cache via clearAutomatically)
+        if (shouldRestoreReserve) {
+            releaseReservationForOrder(order, "Retour physique confirmé par le marchand");
+            log.info("[RETOUR PHYSIQUE] Commande {} — réservation libérée (colis retourné avant livraison)",
+                    order.getOrderNumber());
+        } else {
+            restoreStockForOrder(order, "Retour physique confirmé par le marchand");
+            log.info("[RETOUR PHYSIQUE] Commande {} — stock restauré (colis retourné après livraison)",
+                    order.getOrderNumber());
+        }
+    }
+
     @Transactional
     public OrderDto updateOrder(Long orderId, UpdateOrderRequest request, UserPrincipal principal) {
         Order order = getOrderById(orderId);
@@ -347,6 +360,7 @@ public class OrderService {
                 ? request.getCity() : request.getVille());
         order.setZipCode(request.getZipCode());
         order.setNotes(request.getNotes());
+        order.setDeliveryNotes(request.getDeliveryNotes());
         if (request.getShippingCost() != null) {
             order.setShippingCost(request.getShippingCost());
         }
@@ -361,23 +375,7 @@ public class OrderService {
             order.getItems().clear();
             List<OrderItem> newItems = new ArrayList<>();
             for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
-                OrderItem item = new OrderItem();
-                item.setProductName(itemReq.getProductName());
-                item.setProductSku(itemReq.getProductSku());
-                item.setQuantity(itemReq.getQuantity());
-                item.setUnitPrice(itemReq.getUnitPrice());
-                if (itemReq.getProductId() != null) {
-                    productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
-                }
-                if (itemReq.getVariantId() != null) {
-                    productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
-                        item.setVariant(v);
-                        if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
-                            item.setUnitPrice(v.getPriceOverride());
-                        }
-                    });
-                }
-                item.calculateTotalPrice();
+                OrderItem item = buildOrderItem(itemReq);
                 order.addItem(item);
                 newItems.add(item);
             }
@@ -719,9 +717,59 @@ public class OrderService {
         return result;
     }
 
+    @Transactional
+    public void deleteOrder(Long id) {
+        Order order = getOrderById(id);
+
+        if (order.isStockReserved()) {
+            throw new BusinessException(
+                "Impossible de supprimer cette commande : du stock est encore réservé. " +
+                "Annulez la commande avant de la supprimer.");
+        }
+        if (order.isStockDeducted()) {
+            throw new BusinessException(
+                "Impossible de supprimer une commande livrée dont le stock a déjà été déduit.");
+        }
+        if (order.getStatus() == OrderStatus.LIVRE) {
+            throw new BusinessException(
+                "Impossible de supprimer une commande avec le statut LIVRÉ.");
+        }
+
+        order.setDeleted(true);
+        order.setDeletedAt(LocalDateTime.now());
+        orderRepository.save(order);
+        log.info("[ORDER-DELETE] Commande {} supprimée (soft delete)", order.getOrderNumber());
+    }
+
     private Order getOrderById(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Commande", id));
+    }
+
+    private OrderItem buildOrderItem(CreateOrderRequest.OrderItemRequest itemReq) {
+        OrderItem item = new OrderItem();
+        item.setProductName(itemReq.getProductName());
+        item.setProductSku(itemReq.getProductSku());
+        item.setQuantity(itemReq.getQuantity());
+        item.setUnitPrice(itemReq.getUnitPrice());
+        item.setVariantColor(itemReq.getVariantColor());
+        item.setVariantSize(itemReq.getVariantSize());
+        if (itemReq.getProductId() != null) {
+            productRepository.findById(itemReq.getProductId()).ifPresent(item::setProduct);
+        }
+        if (itemReq.getVariantId() != null) {
+            productVariantRepository.findById(itemReq.getVariantId()).ifPresent(v -> {
+                item.setVariant(v);
+                // Variant overrides manual color/size — source of truth if linked
+                item.setVariantColor(v.getColor());
+                item.setVariantSize(v.getSize());
+                if (v.getPriceOverride() != null && itemReq.getUnitPrice() == null) {
+                    item.setUnitPrice(v.getPriceOverride());
+                }
+            });
+        }
+        item.calculateTotalPrice();
+        return item;
     }
 
     private Customer findOrCreateCustomer(String phone, String phoneNormalized,
@@ -758,8 +806,8 @@ public class OrderService {
                     .id(item.getId())
                     .productId(item.getProduct() != null ? item.getProduct().getId() : null)
                     .variantId(v != null ? v.getId() : null)
-                    .variantColor(v != null ? v.getColor() : null)
-                    .variantSize(v != null ? v.getSize() : null)
+                    .variantColor(item.getVariantColor())
+                    .variantSize(item.getVariantSize())
                     .productName(item.getProductName())
                     .productSku(item.getProductSku())
                     .quantity(item.getQuantity())
@@ -799,6 +847,7 @@ public class OrderService {
                 .deliveryCityId(order.getDeliveryCityId())
                 .zipCode(order.getZipCode())
                 .notes(order.getNotes())
+                .deliveryNotes(order.getDeliveryNotes())
                 .subtotal(order.getSubtotal())
                 .shippingCost(order.getShippingCost())
                 .totalAmount(order.getTotalAmount())

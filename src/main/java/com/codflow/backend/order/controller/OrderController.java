@@ -33,7 +33,7 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Créer une commande manuellement")
     public ResponseEntity<ApiResponse<OrderDto>> createOrder(
             @Valid @RequestBody CreateOrderRequest request,
@@ -113,6 +113,23 @@ public class OrderController {
     @Operation(summary = "Nombre de commandes groupé par statut")
     public ResponseEntity<ApiResponse<Map<String, Long>>> countByStatus() {
         return ResponseEntity.ok(ApiResponse.success(orderService.countByStatus()));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Supprimer une commande (suppression logique)",
+        description = """
+            Suppression logique — la commande n'apparaît plus dans aucune liste ni statistique.
+            Interdit si :
+            - le stock est encore réservé (commande CONFIRMÉE ou en cours de livraison)
+            - le stock a déjà été déduit (commande LIVRÉE)
+            - le statut est LIVRÉ
+            """
+    )
+    public ResponseEntity<ApiResponse<Void>> deleteOrder(@PathVariable Long id) {
+        orderService.deleteOrder(id);
+        return ResponseEntity.ok(ApiResponse.success("Commande supprimée"));
     }
 
     @PostMapping("/bulk-assign")

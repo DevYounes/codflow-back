@@ -1,0 +1,5 @@
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS deleted    BOOLEAN   NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS idx_orders_deleted ON orders(deleted);

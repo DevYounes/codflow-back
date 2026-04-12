@@ -38,6 +38,7 @@ com.codflow.backend
 ├── product/         # Product, ProductVariant, stock
 ├── security/        # JWT, UserPrincipal, filtre auth
 ├── stock/           # StockMovement, StockAlert, StockArrival, StockService
+├── supplier/        # Fournisseurs, bons de commande, paiements, réceptions (CMUP)
 └── team/            # User, Role, auth
 ```
 
@@ -45,6 +46,7 @@ com.codflow.backend
 - `OrderService` → `StockService` (même transaction `@Transactional(REQUIRED)`)
 - `StockService` → `ProductRepository`, `ProductVariantRepository`
 - `DeliveryService` → `OrderService` (mise à jour statut après livraison/retour)
+- `CustomerService` → `OrderRepository`, `DeliveryShipmentRepository`, `StockService` (pour suppression en cascade)
 
 ---
 
@@ -60,15 +62,20 @@ orders
 ├── shopify_order_id (déduplification Shopify)
 ├── customer_phone_normalized (déduplification doublons)
 ├── is_exchange, source_order_id
+├── notes           — remarques internes
+├── delivery_notes  — remarques de livraison (envoyées en parcel-note à Ozon)
+├── deleted, deleted_at — soft delete (@SQLRestriction("deleted = false"))
 └── items → @OneToMany(cascade=ALL, orphanRemoval=true)
 ```
 
 ### OrderItem
 ```
 order_items
-├── product_id  → @ManyToOne(LAZY, NO cascade)
-├── variant_id  → @ManyToOne(LAZY, NO cascade)
-├── unit_cost   — snapshot du costPrice au moment de la confirmation
+├── product_id    → @ManyToOne(LAZY, NO cascade)
+├── variant_id    → @ManyToOne(LAZY, NO cascade)
+├── unit_cost     — snapshot du costPrice au moment de la confirmation
+├── variant_color — snapshot couleur au moment de la création
+├── variant_size  — snapshot taille au moment de la création
 └── quantity, unit_price, total_price
 ```
 
@@ -77,6 +84,7 @@ order_items
 products / product_variants
 ├── current_stock   — stock physique
 ├── reserved_stock  — réservé par commandes confirmées
+├── cost_price      — CMUP (Coût Moyen Unitaire Pondéré), mis à jour à chaque réception fournisseur
 └── getAvailableStock() = currentStock - reservedStock  [transient]
 ```
 
@@ -131,6 +139,102 @@ return toDto(getOrderById(orderId), true);
 
 Ce pattern est implémenté dans `updateStatus()` et `createExchangeOrder()`.
 
+**Même piège dans `CustomerService.deleteCustomer()`** : toutes les données des entités (productId, variantId, qty) sont extraites dans une `List<StockOp>` AVANT d'appeler `stockService.releaseReservation()` qui vide le L1 cache.
+
+---
+
+## Soft delete des commandes
+
+`Order` a `@SQLRestriction("deleted = false")` — Hibernate injecte automatiquement ce filtre sur tous les SELECTs. Les commandes supprimées logiquement sont invisibles dans toutes les requêtes JPA sans modification.
+
+- Suppression logique : `deleted = true`, `deleted_at = now()`
+- Restrictions : interdit si `stockReserved = true` ou `stockDeducted = true` ou statut `LIVRE`
+- Hard delete via `orderRepository.hardDeleteAllByCustomerId()` (native SQL, bypass `@SQLRestriction`)
+
+---
+
+## Suppression client (cascade complète)
+
+`DELETE /api/v1/customers/{id}` (ADMIN uniquement) supprime le client ET toutes ses données.
+
+**Ordre des opérations dans `CustomerService.deleteCustomer()` :**
+1. `findAllOrderIdsByCustomerId` — native SQL, tous les IDs y compris soft-deleted
+2. Collecter les `StockOp` (productId/variantId/qty) pour commandes avec `stockReserved=true`
+3. `releaseReservation()` pour chaque item réservé
+4. `deleteNoteShipmentLinksByOrderIds` — nettoie `delivery_note_shipments` (pas de CASCADE DB)
+5. `deleteAllByOrderIds` — DELETE `delivery_shipments` → CASCADE DB supprime `delivery_tracking_history`
+6. `clearSourceOrderReferences` — `source_order_id = NULL` (pas de CASCADE DB)
+7. `deleteStatusHistoryByOrderIds` + `deleteItemsByOrderIds` — enfants des orders
+8. `hardDeleteAllByCustomerId` — DELETE `orders` (native, bypass `@SQLRestriction`)
+9. DELETE `customer`
+
+**Analytics** : tous recalculés dynamiquement depuis la DB — aucun agrégat stocké à mettre à jour.
+
+**Cascade DB PostgreSQL** (pour référence) :
+- `order_items.order_id` → `ON DELETE CASCADE`
+- `order_status_history.order_id` → `ON DELETE CASCADE`
+- `delivery_shipments.order_id` → `ON DELETE CASCADE`
+- `delivery_tracking_history.shipment_id` → `ON DELETE CASCADE`
+- `delivery_note_shipments.shipment_id` → **pas de CASCADE** ← nettoyage manuel requis
+- `orders.source_order_id` → **pas de CASCADE** ← nullification manuelle requise
+
+---
+
+## Module Fournisseurs (supplier/)
+
+### Flux de statuts
+```
+BROUILLON → CONFIRME → EN_COURS → COMPLETE
+                    ↘ ANNULE
+```
+
+### Entités
+- `Supplier` — fournisseur (nom, contact, actif/inactif)
+- `SupplierOrder` — bon de commande avec lignes, paiements, réceptions
+- `SupplierOrderItem` — ligne : quantityOrdered, quantityReceived
+- `SupplierPayment` — paiements partiels (ESPECES/VIREMENT/CHEQUE/VIREMENT_INSTANTANE)
+- `SupplierDelivery` / `SupplierDeliveryItem` — réceptions par lot
+
+### CMUP (Coût Moyen Unitaire Pondéré)
+Calculé à chaque réception dans `SupplierOrderService.updateVariantStockAndCost()` :
+```
+newCMUP = (prevStock × prevCost + qtyReceived × unitCost) / (prevStock + qtyReceived)
+```
+- Utilise `productVariantRepository.updateCurrentStock()` et `updateCostPrice()` (`@Modifying`)
+- Crée un `StockMovement` de type `IN` avec `referenceType="SUPPLIER_DELIVERY"`
+- Met à jour aussi `product.currentStock` (agrégat)
+
+### Endpoints
+```
+POST   /api/v1/suppliers                        # créer fournisseur (ADMIN)
+PUT    /api/v1/suppliers/{id}                   # modifier (ADMIN)
+GET    /api/v1/suppliers                        # liste paginée (ADMIN, MANAGER)
+GET    /api/v1/suppliers/active                 # pour select (ADMIN, MANAGER)
+DELETE /api/v1/suppliers/{id}                   # désactiver (ADMIN)
+
+POST   /api/v1/supplier-orders                  # créer bon de commande
+GET    /api/v1/supplier-orders                  # liste (filtres : supplierId, status)
+GET    /api/v1/supplier-orders/{id}             # détail avec paiements et réceptions
+PATCH  /api/v1/supplier-orders/{id}/confirm     # BROUILLON → CONFIRME
+PATCH  /api/v1/supplier-orders/{id}/cancel      # annuler
+POST   /api/v1/supplier-orders/{id}/payments    # enregistrer paiement
+DELETE /api/v1/supplier-orders/{id}/payments/{paymentId}  # supprimer paiement (ADMIN)
+POST   /api/v1/supplier-orders/{id}/deliveries  # enregistrer réception (met à jour stock + CMUP)
+```
+
+---
+
+## Rôles et permissions
+
+| Rôle | Accès |
+|------|-------|
+| `ADMIN` | Tout |
+| `MANAGER` | Commandes, clients, fournisseurs, livraisons, stock, analytics |
+| `AGENT` | Commandes (GET/POST/PUT/status), clients (GET/PUT), livraisons (shipments) |
+| `MAGASINIER` | Stock, arrivages (`/stock/*`), bons de livraison (`/delivery/notes/*`), retours (`/delivery/returns`, `confirm-return`) |
+
+**Périmètre MAGASINIER** : uniquement stock physique, arrivages, BL et retours. Pas d'accès aux commandes, fournisseurs ou shipments.
+
 ---
 
 ## Import Shopify
@@ -160,7 +264,7 @@ POST /api/v1/import/backfill-order-costs         # relier items → produits via
 ```
 
 ### Logique curseur since_id (bug corrigé)
-Si un ordre échoue à l'import, le curseur **ne doit pas avancer au-delà** de cet ID pour permettre la retraite au prochain cycle.
+Si un ordre échoue à l'import, le curseur **ne doit pas avancer au-delà** de cet ID.
 
 ```java
 long maxSuccessId = sinceId;       // avance seulement pour les succès
@@ -189,14 +293,17 @@ La livraison déclenche des changements de statut commande :
 - Shipment `DELIVERED` → commande `LIVRE` → `finalizeStockDeduction`
 - Shipment `RETURNED` → commande `RETOURNE` → restore/release stock selon état
 
+**`delivery_notes`** (champ sur Order) : remarque envoyée en `parcel-note` à Ozon. Distinct de `notes` (remarques internes). `buildShipmentRequest()` utilise `deliveryNotes` si non-blank, sinon fallback sur `notes`.
+
 ---
 
 ## Sécurité
 
 - JWT stateless (jjwt 0.12.3), expiration 24h (configurable `JWT_EXPIRATION`)
-- Rôles : `ADMIN`, `MANAGER`, `AGENT`
+- Rôles : `ADMIN`, `MANAGER`, `AGENT`, `MAGASINIER`
 - Les agents ne voient que **leurs propres commandes** (`assignedTo`)
 - Endpoint OAuth Shopify `/oauth/callback` est **public** (appelé par Shopify)
+- Token expiré → **401** (AuthenticationEntryPoint configuré) — pas 403
 
 ---
 
@@ -208,6 +315,7 @@ La livraison déclenche des changements de statut commande :
 - **Exceptions** : `BusinessException` (400), `ResourceNotFoundException` (404) — gérées par `GlobalExceptionHandler`
 - **Réponses API** : toujours enveloppées dans `ApiResponse<T>` ; listes paginées dans `PageResponse<T>`
 - **Numéros commande** : format `COD-YYYYMMDD-XXXXXX` (auto) ou fourni à la création ; Shopify : collision → suffixe UUID court
+- **`buildOrderItem()`** : helper dans `OrderService` — extrait la logique commune pour `createOrder`, `updateOrder`, `createExchangeOrder`. Snapshote `variantColor`, `variantSize`, `productName`, `productSku`, `unit_cost`.
 
 ---
 
@@ -230,9 +338,16 @@ La livraison déclenche des changements de statut commande :
 
 ## Migrations Flyway
 
-Dernière migration : `V20__add_order_exchange.sql`  
-Prochaine : `V21__...`  
+Dernière migration : `V28__add_delivery_notes_to_orders.sql`  
+Prochaine : `V29__...`  
 Ne jamais modifier une migration existante — toujours créer une nouvelle.
+
+**Migrations de cette session :**
+- `V24` — soft delete sur `orders` (`deleted`, `deleted_at`)
+- `V25` — `variant_color`, `variant_size` sur `order_items`
+- `V26` — module fournisseurs : `suppliers`, `supplier_orders`, `supplier_order_items`
+- `V27` — `supplier_payments`, `supplier_deliveries`, `supplier_delivery_items`
+- `V28` — `delivery_notes` (TEXT) sur `orders`
 
 ---
 
@@ -244,3 +359,7 @@ Ne jamais modifier une migration existante — toujours créer une nouvelle.
 4. **`snapshotUnitCosts`** : doit être appelé pendant que les items sont encore MANAGED (avant les opérations stock)
 5. **Ozon city ID** : champ `deliveryCityId` sur Order — ID numérique requis par Ozon, distinct du champ texte `ville`
 6. **Téléphone normalisé** : `PhoneNormalizer.normalize()` pour la déduplification (`0612345678` = `212612345678` = `+212612345678`)
+7. **Suppression client** : `deleteCustomer()` doit collecter toutes les données entité AVANT les `@Modifying` (L1 cache vidé après chaque appel stock). Voir section "Suppression client".
+8. **`delivery_note_shipments`** : pas de CASCADE DB sur `shipment_id` — nettoyage manuel obligatoire avant toute suppression de shipments
+9. **`source_order_id`** : pas de CASCADE DB — nullification manuelle avant suppression des orders référencés
+10. **MAGASINIER** : accès limité à stock/arrivages/BL/retours uniquement — ne pas ajouter d'autres permissions sans réflexion

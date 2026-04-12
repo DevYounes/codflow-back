@@ -36,6 +36,8 @@ public class DeliveryShipmentDto {
     private BigDecimal refusedPrice;
     private BigDecimal appliedFee;
     private String appliedFeeType;
+    private int cancelledAttempts;
+    private int refusedAttempts;
     private List<TrackingEventDto> trackingHistory;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
