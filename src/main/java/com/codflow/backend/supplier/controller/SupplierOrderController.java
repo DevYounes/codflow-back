@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/supplier-orders")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
+@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 @Tag(name = "Supplier Orders", description = "Bons de commande fournisseurs — paiements et réceptions")
 public class SupplierOrderController {
 

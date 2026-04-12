@@ -44,7 +44,7 @@ public class SupplierController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Lister tous les fournisseurs (paginé)")
     public ResponseEntity<ApiResponse<PageResponse<SupplierDto>>> getSuppliers(
             @RequestParam(defaultValue = "0") int page,
@@ -54,14 +54,14 @@ public class SupplierController {
     }
 
     @GetMapping("/active")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Lister les fournisseurs actifs (pour select)")
     public ResponseEntity<ApiResponse<List<SupplierDto>>> getActiveSuppliers() {
         return ResponseEntity.ok(ApiResponse.success(supplierService.getActiveSuppliers()));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Obtenir un fournisseur par ID")
     public ResponseEntity<ApiResponse<SupplierDto>> getSupplier(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(supplierService.getSupplier(id)));

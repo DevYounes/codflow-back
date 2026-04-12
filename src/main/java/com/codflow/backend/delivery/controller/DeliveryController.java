@@ -43,7 +43,7 @@ public class DeliveryController {
     private final DeliveryProviderRegistry providerRegistry;
 
     @GetMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Lister les envois avec filtres optionnels")
     public ResponseEntity<ApiResponse<org.springframework.data.domain.Page<DeliveryShipmentDto>>> listShipments(
             @RequestParam(required = false) List<ShipmentStatus> status,
@@ -60,14 +60,14 @@ public class DeliveryController {
     }
 
     @GetMapping("/shipments/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Obtenir un envoi par ID")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> getShipment(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(deliveryService.getShipmentById(id)));
     }
 
     @PostMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Créer un envoi pour une commande confirmée")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> createShipment(
             @Valid @RequestBody CreateShipmentRequest request) {
@@ -75,7 +75,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/pickup")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Demander un ramassage auprès du transporteur")
     public ResponseEntity<ApiResponse<Void>> requestPickup(@Valid @RequestBody RequestPickupDto request) {
         deliveryService.requestPickup(request);
@@ -89,7 +89,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/shipments/{id}/sync")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Synchroniser le suivi d'un envoi")
     public ResponseEntity<ApiResponse<DeliveryShipmentDto>> syncTracking(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success("Suivi mis à jour", deliveryService.syncTracking(id)));
