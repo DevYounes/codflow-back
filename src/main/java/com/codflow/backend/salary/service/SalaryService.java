@@ -380,6 +380,8 @@ public class SalaryService {
                 .commissionPerDelivered(p.getCommissionPerDelivered())
                 .confirmedCount(p.getConfirmedCount())
                 .deliveredCount(p.getDeliveredCount())
+                .commissionFromConfirmed(multiply(p.getCommissionPerConfirmed(), p.getConfirmedCount()))
+                .commissionFromDelivered(multiply(p.getCommissionPerDelivered(), p.getDeliveredCount()))
                 .commissionAmount(p.getCommissionAmount())
                 .bonus(p.getBonus())
                 .deduction(p.getDeduction())

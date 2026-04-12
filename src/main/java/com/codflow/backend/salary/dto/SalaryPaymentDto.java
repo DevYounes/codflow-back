@@ -35,6 +35,11 @@ public class SalaryPaymentDto {
     private int confirmedCount;
     private int deliveredCount;
 
+    /** Détail commission : montant issu des commandes confirmées (= commissionPerConfirmed × confirmedCount). */
+    private BigDecimal commissionFromConfirmed;
+    /** Détail commission : montant issu des commandes livrées (= commissionPerDelivered × deliveredCount). */
+    private BigDecimal commissionFromDelivered;
+
     private BigDecimal commissionAmount;
     private BigDecimal bonus;
     private BigDecimal deduction;
