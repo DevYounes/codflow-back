@@ -53,7 +53,7 @@ public class CustomerController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Mettre à jour les infos d'un client")
     public ResponseEntity<ApiResponse<CustomerDto>> updateCustomer(
             @PathVariable Long id,
