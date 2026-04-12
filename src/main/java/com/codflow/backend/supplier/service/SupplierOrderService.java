@@ -6,6 +6,9 @@ import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.product.entity.ProductVariant;
 import com.codflow.backend.product.repository.ProductRepository;
 import com.codflow.backend.product.repository.ProductVariantRepository;
+import com.codflow.backend.stock.entity.StockMovement;
+import com.codflow.backend.stock.enums.MovementType;
+import com.codflow.backend.stock.repository.StockMovementRepository;
 import com.codflow.backend.supplier.dto.*;
 import com.codflow.backend.supplier.entity.*;
 import com.codflow.backend.supplier.enums.SupplierOrderStatus;
@@ -37,6 +40,7 @@ public class SupplierOrderService {
     private final SupplierService supplierService;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final StockMovementRepository stockMovementRepository;
 
     // -------------------------------------------------------------------------
     // Commandes fournisseur
@@ -214,9 +218,10 @@ public class SupplierOrderService {
             // Mise à jour quantité reçue sur la ligne
             orderItem.setQuantityReceived(orderItem.getQuantityReceived() + itemReq.getQuantityReceived());
 
-            // Mise à jour stock et CMUP sur le variant
+            // Injection en stock + CMUP
             if (orderItem.getVariant() != null) {
-                updateVariantStockAndCost(orderItem.getVariant(), itemReq.getQuantityReceived(), effectiveUnitCost);
+                updateVariantStockAndCost(orderItem.getVariant(), itemReq.getQuantityReceived(),
+                        effectiveUnitCost, order.getOrderNumber());
             }
         }
 
@@ -233,29 +238,53 @@ public class SupplierOrderService {
     }
 
     /**
-     * Met à jour le stock courant et le coût moyen unitaire pondéré (CMUP) du variant.
-     * CMUP = (stockActuel × coûtActuel + qtyReçue × coûtUnitaire) / (stockActuel + qtyReçue)
+     * Injecte le stock reçu dans le variant et recalcule le CMUP.
+     * Utilise les @Modifying directs (pattern StockArrivalService) pour éviter
+     * les problèmes de cache L1 Hibernate.
+     * Crée également un StockMovement pour la traçabilité.
      */
-    private void updateVariantStockAndCost(ProductVariant variant, int qtyReceived, BigDecimal unitCost) {
-        int currentStock = variant.getCurrentStock();
-        BigDecimal currentCost = variant.getCostPrice() != null ? variant.getCostPrice() : BigDecimal.ZERO;
+    private void updateVariantStockAndCost(ProductVariant variant, int qtyReceived,
+                                           BigDecimal unitCost, String orderNumber) {
+        // Capturer les valeurs AVANT tout @Modifying (qui vide le L1 cache)
+        int prevVariantStock  = variant.getCurrentStock();
+        int newVariantStock   = prevVariantStock + qtyReceived;
+        BigDecimal prevCost   = variant.getCostPrice() != null ? variant.getCostPrice() : BigDecimal.ZERO;
 
-        // CMUP
-        if (currentStock > 0 && currentCost.compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal totalValue = currentCost.multiply(BigDecimal.valueOf(currentStock))
+        // CMUP = (stock_actuel × coût_actuel + qty_reçue × coût_lot) / nouveau_stock
+        BigDecimal newCmup;
+        if (prevVariantStock > 0 && prevCost.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal totalValue = prevCost.multiply(BigDecimal.valueOf(prevVariantStock))
                     .add(unitCost.multiply(BigDecimal.valueOf(qtyReceived)));
-            BigDecimal newCmup = totalValue.divide(
-                    BigDecimal.valueOf(currentStock + qtyReceived), 4, RoundingMode.HALF_UP);
-            variant.setCostPrice(newCmup);
+            newCmup = totalValue.divide(BigDecimal.valueOf(newVariantStock), 4, RoundingMode.HALF_UP);
         } else {
-            // Premier stock ou stock vide : coût direct
-            variant.setCostPrice(unitCost);
+            newCmup = unitCost;
         }
 
-        variant.setCurrentStock(currentStock + qtyReceived);
-        productVariantRepository.save(variant);
-        log.debug("[CMUP] Variant {} — stock {} → {}, costPrice → {}",
-                variant.getVariantSku(), currentStock, variant.getCurrentStock(), variant.getCostPrice());
+        // Mettre à jour le stock variant (direct UPDATE — safe vis-à-vis du cache L1)
+        productVariantRepository.updateCurrentStock(variant.getId(), newVariantStock);
+        // Mettre à jour le CMUP (direct UPDATE après le premier pour éviter la réouverture de session)
+        productVariantRepository.updateCostPrice(variant.getId(), newCmup);
+
+        // Mettre à jour le stock produit parent
+        if (variant.getProduct() != null) {
+            int prevProductStock = variant.getProduct().getCurrentStock();
+            int newProductStock  = prevProductStock + qtyReceived;
+            productRepository.updateCurrentStock(variant.getProduct().getId(), newProductStock);
+
+            // StockMovement pour traçabilité
+            StockMovement movement = new StockMovement();
+            movement.setProduct(variant.getProduct());
+            movement.setMovementType(MovementType.IN);
+            movement.setQuantity(qtyReceived);
+            movement.setPreviousStock(prevProductStock);
+            movement.setNewStock(newProductStock);
+            movement.setReason("Réception fournisseur — bon " + orderNumber);
+            movement.setReferenceType("SUPPLIER_DELIVERY");
+            stockMovementRepository.save(movement);
+        }
+
+        log.info("[SUPPLIER-STOCK] Variant {} — stock {} → {}, CMUP {} → {}",
+                variant.getVariantSku(), prevVariantStock, newVariantStock, prevCost, newCmup);
     }
 
     // -------------------------------------------------------------------------

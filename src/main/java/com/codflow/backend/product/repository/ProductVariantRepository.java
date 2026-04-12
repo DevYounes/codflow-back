@@ -43,6 +43,11 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     @Query("UPDATE ProductVariant v SET v.reservedStock = v.reservedStock + :delta WHERE v.id = :variantId")
     void incrementReservedStock(@Param("variantId") Long variantId, @Param("delta") int delta);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("UPDATE ProductVariant v SET v.costPrice = :costPrice WHERE v.id = :variantId")
+    void updateCostPrice(@Param("variantId") Long variantId, @Param("costPrice") java.math.BigDecimal costPrice);
+
     /** JOIN FETCH ensures the Product proxy is loaded within the same query — safe to use outside a transaction. */
     @Query("SELECT v FROM ProductVariant v JOIN FETCH v.product WHERE v.variantSku = :sku")
     Optional<ProductVariant> findByVariantSku(@Param("sku") String sku);
