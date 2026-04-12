@@ -17,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/customers")
@@ -25,6 +26,10 @@ import java.util.Map;
 public class CustomerController {
 
     private final CustomerService customerService;
+
+    /** Colonnes triables sur l'entité Customer (champs calculés du DTO exclus). */
+    private static final Set<String> SORTABLE_FIELDS = Set.of(
+            "id", "fullName", "phone", "email", "ville", "status", "createdAt", "updatedAt");
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
@@ -37,9 +42,10 @@ public class CustomerController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
 
+        String safeSortBy = SORTABLE_FIELDS.contains(sortBy) ? sortBy : "createdAt";
         Sort sort = sortDir.equalsIgnoreCase("asc")
-                ? Sort.by(sortBy).ascending()
-                : Sort.by(sortBy).descending();
+                ? Sort.by(safeSortBy).ascending()
+                : Sort.by(safeSortBy).descending();
         Pageable pageable = PageRequest.of(page, size, sort);
         return ResponseEntity.ok(ApiResponse.success(
                 customerService.getCustomers(status, search, pageable)));
