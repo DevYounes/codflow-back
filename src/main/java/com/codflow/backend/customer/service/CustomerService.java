@@ -1,12 +1,16 @@
 package com.codflow.backend.customer.service;
 
-import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.customer.dto.CustomerDto;
 import com.codflow.backend.customer.dto.UpdateCustomerRequest;
 import com.codflow.backend.customer.entity.Customer;
 import com.codflow.backend.customer.enums.CustomerStatus;
 import com.codflow.backend.customer.repository.CustomerRepository;
+import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
+import com.codflow.backend.order.entity.Order;
+import com.codflow.backend.order.entity.OrderItem;
+import com.codflow.backend.order.repository.OrderRepository;
+import com.codflow.backend.stock.service.StockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -16,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -30,6 +36,9 @@ public class CustomerService {
     private static final int NON_SERIEUX_REFUSAL_THRESHOLD = 2;
 
     private final CustomerRepository customerRepository;
+    private final OrderRepository orderRepository;
+    private final DeliveryShipmentRepository shipmentRepository;
+    private final StockService stockService;
 
     /**
      * Returns or creates a customer by normalized phone.
@@ -101,12 +110,53 @@ public class CustomerService {
     public void deleteCustomer(Long id) {
         Customer customer = customerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Client", id));
-        long orderCount = customerRepository.countOrdersByCustomer(id);
-        if (orderCount > 0) {
-            throw new BusinessException("Impossible de supprimer un client ayant des commandes ("
-                    + orderCount + " commande(s) liée(s))");
+        String customerName = customer.getFullName();
+
+        // 1. Trouver TOUS les IDs de commandes du client (y compris soft-deleted, bypass @SQLRestriction)
+        List<Long> orderIds = orderRepository.findAllOrderIdsByCustomerId(id);
+        log.info("Suppression client {} (id={}) — {} commande(s) à purger", customerName, id, orderIds.size());
+
+        if (!orderIds.isEmpty()) {
+            // 2. Collecter les données stock avant tout @Modifying (qui vide le L1 cache)
+            List<Order> reservedOrders = orderRepository.findReservedOrdersWithItemsByIds(orderIds);
+            record StockOp(Long productId, Long variantId, int qty, Long orderId) {}
+            List<StockOp> stockOps = new ArrayList<>();
+            for (Order order : reservedOrders) {
+                for (OrderItem item : order.getItems()) {
+                    if (item.getProduct() != null) {
+                        stockOps.add(new StockOp(
+                                item.getProduct().getId(),
+                                item.getVariant() != null ? item.getVariant().getId() : null,
+                                item.getQuantity(),
+                                order.getId()));
+                    }
+                }
+            }
+
+            // 3. Libérer les réservations stock
+            for (StockOp op : stockOps) {
+                stockService.releaseReservation(op.productId(), op.variantId(), op.qty(), op.orderId(),
+                        "Suppression client " + customerName);
+            }
+
+            // 4. Supprimer les liens delivery_note_shipments + les shipments
+            shipmentRepository.deleteNoteShipmentLinksByOrderIds(orderIds);
+            shipmentRepository.deleteAllByOrderIds(orderIds);
+
+            // 5. Vider les références source_order_id pointant vers ces commandes
+            orderRepository.clearSourceOrderReferences(orderIds);
+
+            // 6. Supprimer les enfants des commandes (JPA cascade ne s'applique pas aux DELETE natifs)
+            orderRepository.deleteStatusHistoryByOrderIds(orderIds);
+            orderRepository.deleteItemsByOrderIds(orderIds);
+
+            // 7. Hard-delete toutes les commandes (bypass @SQLRestriction)
+            orderRepository.hardDeleteAllByCustomerId(id);
         }
+
+        // 8. Supprimer le client
         customerRepository.delete(customer);
+        log.info("Client {} (id={}) supprimé avec {} commande(s)", customerName, id, orderIds.size());
     }
 
     /**

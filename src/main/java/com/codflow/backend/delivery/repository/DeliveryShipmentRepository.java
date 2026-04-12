@@ -48,6 +48,14 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
 
     long countByStatus(ShipmentStatus status);
 
+    @Modifying
+    @Query(value = "DELETE FROM delivery_note_shipments WHERE shipment_id IN (SELECT id FROM delivery_shipments WHERE order_id IN :orderIds)", nativeQuery = true)
+    void deleteNoteShipmentLinksByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    @Modifying
+    @Query(value = "DELETE FROM delivery_shipments WHERE order_id IN :orderIds", nativeQuery = true)
+    void deleteAllByOrderIds(@Param("orderIds") List<Long> orderIds);
+
     /**
      * Somme de toutes les tentatives d'annulation de livraison pour un client donné.
      * Traverse : DeliveryShipment → Order → Customer.

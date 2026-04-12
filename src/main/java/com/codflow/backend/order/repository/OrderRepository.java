@@ -126,4 +126,28 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     @Query("SELECT o.source, COUNT(o) FROM Order o WHERE o.source IS NOT NULL GROUP BY o.source")
     List<Object[]> countGroupBySource();
+
+    // ---- Customer hard-delete support (bypass @SQLRestriction) ----
+
+    @Query(value = "SELECT id FROM orders WHERE customer_id = :customerId", nativeQuery = true)
+    List<Long> findAllOrderIdsByCustomerId(@Param("customerId") Long customerId);
+
+    @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product LEFT JOIN FETCH i.variant WHERE o.id IN :ids AND o.stockReserved = true")
+    List<Order> findReservedOrdersWithItemsByIds(@Param("ids") List<Long> ids);
+
+    @Modifying
+    @Query(value = "UPDATE orders SET source_order_id = NULL WHERE source_order_id IN :orderIds", nativeQuery = true)
+    void clearSourceOrderReferences(@Param("orderIds") List<Long> orderIds);
+
+    @Modifying
+    @Query(value = "DELETE FROM order_status_history WHERE order_id IN :orderIds", nativeQuery = true)
+    void deleteStatusHistoryByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    @Modifying
+    @Query(value = "DELETE FROM order_items WHERE order_id IN :orderIds", nativeQuery = true)
+    void deleteItemsByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    @Modifying
+    @Query(value = "DELETE FROM orders WHERE customer_id = :customerId", nativeQuery = true)
+    void hardDeleteAllByCustomerId(@Param("customerId") Long customerId);
 }
