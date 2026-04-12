@@ -1,5 +1,6 @@
 package com.codflow.backend.customer.service;
 
+import com.codflow.backend.common.exception.BusinessException;
 import com.codflow.backend.common.exception.ResourceNotFoundException;
 import com.codflow.backend.customer.dto.CustomerDto;
 import com.codflow.backend.customer.dto.UpdateCustomerRequest;
@@ -94,6 +95,18 @@ public class CustomerService {
         customer.setStatus(status);
         if (notes != null) customer.setNotes(notes);
         return toDto(customerRepository.save(customer));
+    }
+
+    @Transactional
+    public void deleteCustomer(Long id) {
+        Customer customer = customerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Client", id));
+        long orderCount = customerRepository.countOrdersByCustomer(id);
+        if (orderCount > 0) {
+            throw new BusinessException("Impossible de supprimer un client ayant des commandes ("
+                    + orderCount + " commande(s) liée(s))");
+        }
+        customerRepository.delete(customer);
     }
 
     /**

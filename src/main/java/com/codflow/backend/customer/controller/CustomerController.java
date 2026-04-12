@@ -62,6 +62,17 @@ public class CustomerController {
                 "Client mis à jour", customerService.update(id, request)));
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Supprimer un client",
+        description = "Suppression définitive. Interdit si le client possède des commandes."
+    )
+    public ResponseEntity<ApiResponse<Void>> deleteCustomer(@PathVariable Long id) {
+        customerService.deleteCustomer(id);
+        return ResponseEntity.ok(ApiResponse.success("Client supprimé"));
+    }
+
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     @Operation(summary = "Changer le statut d'un client (blacklist, non sérieux, fidèle...)")
