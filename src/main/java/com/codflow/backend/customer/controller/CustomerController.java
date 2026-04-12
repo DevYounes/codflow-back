@@ -9,15 +9,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
-import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/customers")
@@ -26,10 +22,6 @@ import java.util.Set;
 public class CustomerController {
 
     private final CustomerService customerService;
-
-    /** Colonnes triables sur l'entité Customer (champs calculés du DTO exclus). */
-    private static final Set<String> SORTABLE_FIELDS = Set.of(
-            "id", "fullName", "phone", "email", "ville", "status", "createdAt", "updatedAt");
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
@@ -42,13 +34,8 @@ public class CustomerController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
 
-        String safeSortBy = SORTABLE_FIELDS.contains(sortBy) ? sortBy : "createdAt";
-        Sort sort = sortDir.equalsIgnoreCase("asc")
-                ? Sort.by(safeSortBy).ascending()
-                : Sort.by(safeSortBy).descending();
-        Pageable pageable = PageRequest.of(page, size, sort);
         return ResponseEntity.ok(ApiResponse.success(
-                customerService.getCustomers(status, search, pageable)));
+                customerService.getCustomers(status, search, page, size, sortBy, sortDir)));
     }
 
     @GetMapping("/{id}")
@@ -72,7 +59,7 @@ public class CustomerController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Supprimer un client",
-        description = "Suppression définitive. Interdit si le client possède des commandes."
+        description = "Suppression définitive du client et de toutes ses commandes."
     )
     public ResponseEntity<ApiResponse<Void>> deleteCustomer(@PathVariable Long id) {
         customerService.deleteCustomer(id);

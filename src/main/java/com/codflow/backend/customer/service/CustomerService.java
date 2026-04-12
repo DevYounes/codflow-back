@@ -14,7 +14,9 @@ import com.codflow.backend.stock.service.StockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -57,12 +60,35 @@ public class CustomerService {
                 .orElseGet(() -> create(phone, null, fullName, address, ville));
     }
 
+    private static final Set<String> ENTITY_SORT_FIELDS = Set.of(
+            "id", "fullName", "phone", "email", "ville", "status", "createdAt", "updatedAt");
+
     @Transactional(readOnly = true)
-    public Page<CustomerDto> getCustomers(CustomerStatus status, String search, Pageable pageable) {
+    public Page<CustomerDto> getCustomers(CustomerStatus status, String search,
+                                          int page, int size, String sortBy, String sortDir) {
         String searchPattern = (search != null && !search.isBlank())
                 ? "%" + search.trim().toLowerCase() + "%"
                 : null;
-        return customerRepository.findWithFilters(status, searchPattern, pageable)
+        boolean asc = "asc".equalsIgnoreCase(sortDir);
+        String statusStr = status != null ? status.name() : null;
+        Pageable unsorted = PageRequest.of(page, size);
+
+        if ("totalOrders".equals(sortBy)) {
+            return (asc
+                    ? customerRepository.findSortedByTotalOrdersAsc(statusStr, searchPattern, unsorted)
+                    : customerRepository.findSortedByTotalOrdersDesc(statusStr, searchPattern, unsorted))
+                    .map(this::toDto);
+        }
+        if ("confirmationRate".equals(sortBy) || "confirmedOrders".equals(sortBy)) {
+            return (asc
+                    ? customerRepository.findSortedByConfirmationRateAsc(statusStr, searchPattern, unsorted)
+                    : customerRepository.findSortedByConfirmationRateDesc(statusStr, searchPattern, unsorted))
+                    .map(this::toDto);
+        }
+
+        String safeSortBy = ENTITY_SORT_FIELDS.contains(sortBy) ? sortBy : "createdAt";
+        Sort sort = asc ? Sort.by(safeSortBy).ascending() : Sort.by(safeSortBy).descending();
+        return customerRepository.findWithFilters(status, searchPattern, PageRequest.of(page, size, sort))
                 .map(this::toDto);
     }
 
