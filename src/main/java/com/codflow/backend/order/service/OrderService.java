@@ -96,7 +96,19 @@ public class OrderService {
         order.setShippingCost(request.getShippingCost() != null ? request.getShippingCost() : java.math.BigDecimal.ZERO);
         order.setShopifyOrderId(request.getShopifyOrderId());
         order.setExternalRef(request.getExternalRef());
-        order.setStatus(OrderStatus.NOUVEAU);
+        order.setDeliveryCityId(request.getDeliveryCityId());
+
+        // Statut initial depuis le body, sinon NOUVEAU
+        OrderStatus initialStatus = request.getStatus() != null ? request.getStatus() : OrderStatus.NOUVEAU;
+        order.setStatus(initialStatus);
+
+        // Assignation explicite depuis le body — prioritaire sur le round-robin
+        if (request.getAssignedToId() != null) {
+            userRepository.findById(request.getAssignedToId()).ifPresent(agent -> {
+                order.setAssignedTo(agent);
+                order.setAssignedAt(LocalDateTime.now());
+            });
+        }
 
         // Add items
         for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
@@ -106,13 +118,16 @@ public class OrderService {
 
         Order saved = orderRepository.save(order);
 
-        // Record initial status history
-        recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Commande créée");
+        // Record initial status history (reflète le statut réel, pas un NOUVEAU figé)
+        recordStatusChange(saved, null, initialStatus, principal, "Commande créée");
 
-        // Auto-assign via round-robin
-        roundRobinAssignmentService.assign(saved);
+        // Auto-assign via round-robin uniquement si aucune assignation explicite
+        if (saved.getAssignedTo() == null) {
+            roundRobinAssignmentService.assign(saved);
+        }
 
-        log.info("Order created: {} from source {}", saved.getOrderNumber(), saved.getSource());
+        log.info("Order created: {} from source {} with status {}",
+                saved.getOrderNumber(), saved.getSource(), saved.getStatus());
         return toDto(saved, true);
     }
 
