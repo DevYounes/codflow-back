@@ -143,68 +143,107 @@ public class OrderService {
      */
     @Transactional
     public OrderDto createExchangeOrder(Long sourceOrderId, CreateOrderRequest request, UserPrincipal principal) {
+        return createFollowUpOrder(sourceOrderId, request, principal, true);
+    }
+
+    /**
+     * Crée une commande additionnelle à partir d'une commande livrée dont le client
+     * est satisfait et souhaite acheter un autre produit.
+     *
+     * Comportement :
+     * - Copie le client, l'adresse, la ville et le deliveryCityId de la commande source
+     * - Les articles sont fournis dans la requête (nouveau produit à livrer)
+     * - La commande est créée directement en statut CONFIRME
+     * - isExchange = false : il s'agit d'une nouvelle commande payante, pas d'un échange
+     *   (aucun flag parcel-echange=1 envoyé à Ozon)
+     * - Le stock est réservé immédiatement
+     * - Accessible à tous les rôles (ADMIN, MANAGER, AGENT, MAGASINIER)
+     */
+    @Transactional
+    public OrderDto createAdditionalOrder(Long sourceOrderId, CreateOrderRequest request, UserPrincipal principal) {
+        return createFollowUpOrder(sourceOrderId, request, principal, false);
+    }
+
+    /**
+     * Logique partagée entre {@link #createExchangeOrder} et {@link #createAdditionalOrder}.
+     * La différence tient dans :
+     * - le flag isExchange (true = échange Ozon, false = nouvelle commande payante)
+     * - le préfixe du numéro de commande ("ECHANGE-" vs COD-YYYYMMDD-XXXXXX standard)
+     * - les libellés dans l'historique et les logs
+     */
+    private OrderDto createFollowUpOrder(Long sourceOrderId,
+                                         CreateOrderRequest request,
+                                         UserPrincipal principal,
+                                         boolean isExchange) {
         Order sourceOrder = getOrderById(sourceOrderId);
 
         if (sourceOrder.getStatus() != OrderStatus.LIVRE) {
             throw new BusinessException(
-                    "L'échange ne peut être créé que pour une commande livrée (statut actuel: "
+                    (isExchange ? "L'échange" : "Une commande additionnelle")
+                    + " ne peut être créé que pour une commande livrée (statut actuel: "
                     + sourceOrder.getStatus().getLabel() + ")");
         }
 
-        // Construire la commande d'échange en copiant les infos client de la source
-        Order exchange = new Order();
-        exchange.setSource(OrderSource.MANUAL);
-        exchange.setExchange(true);
-        exchange.setSourceOrder(sourceOrder);
+        Order followUp = new Order();
+        followUp.setSource(OrderSource.MANUAL);
+        followUp.setExchange(isExchange);
+        followUp.setSourceOrder(sourceOrder);
 
         // Client — peut être surchargé par la requête mais par défaut = même client
-        exchange.setCustomerName(firstNonBlank(request.getCustomerName(), sourceOrder.getCustomerName()));
+        followUp.setCustomerName(firstNonBlank(request.getCustomerName(), sourceOrder.getCustomerName()));
         String rawPhone = firstNonBlank(request.getCustomerPhone(), sourceOrder.getCustomerPhone());
         String normalizedPhone = com.codflow.backend.common.util.PhoneNormalizer.normalize(rawPhone);
-        exchange.setCustomerPhone(rawPhone);
-        exchange.setCustomerPhoneNormalized(normalizedPhone);
-        exchange.setCustomerPhone2(request.getCustomerPhone2() != null
+        followUp.setCustomerPhone(rawPhone);
+        followUp.setCustomerPhoneNormalized(normalizedPhone);
+        followUp.setCustomerPhone2(request.getCustomerPhone2() != null
                 ? request.getCustomerPhone2() : sourceOrder.getCustomerPhone2());
 
         // Adresse — par défaut = même adresse
-        exchange.setAddress(firstNonBlank(request.getAddress(), sourceOrder.getAddress()));
-        exchange.setVille(firstNonBlank(request.getVille(), sourceOrder.getVille()));
-        exchange.setCity(firstNonBlank(request.getCity(), sourceOrder.getCity()));
-        exchange.setDeliveryCityId(request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()
+        followUp.setAddress(firstNonBlank(request.getAddress(), sourceOrder.getAddress()));
+        followUp.setVille(firstNonBlank(request.getVille(), sourceOrder.getVille()));
+        followUp.setCity(firstNonBlank(request.getCity(), sourceOrder.getCity()));
+        followUp.setDeliveryCityId(request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()
                 ? request.getDeliveryCityId() : sourceOrder.getDeliveryCityId());
-        exchange.setZipCode(request.getZipCode() != null ? request.getZipCode() : sourceOrder.getZipCode());
-        exchange.setNotes(request.getNotes());
-        exchange.setShippingCost(request.getShippingCost() != null
+        followUp.setZipCode(request.getZipCode() != null ? request.getZipCode() : sourceOrder.getZipCode());
+        followUp.setNotes(request.getNotes());
+        followUp.setShippingCost(request.getShippingCost() != null
                 ? request.getShippingCost() : java.math.BigDecimal.ZERO);
 
-        // Numéro de commande
-        String exchangeNumber = "ECHANGE-" + sourceOrder.getOrderNumber();
-        if (orderRepository.existsByOrderNumber(exchangeNumber)) {
-            exchangeNumber = "ECHANGE-" + sourceOrder.getOrderNumber() + "-"
-                    + java.util.UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+        // Numéro de commande : préfixé pour les échanges, format standard sinon
+        String orderNumber;
+        if (isExchange) {
+            orderNumber = "ECHANGE-" + sourceOrder.getOrderNumber();
+            if (orderRepository.existsByOrderNumber(orderNumber)) {
+                orderNumber = "ECHANGE-" + sourceOrder.getOrderNumber() + "-"
+                        + java.util.UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+            }
+        } else {
+            orderNumber = generateOrderNumber(request);
         }
-        exchange.setOrderNumber(exchangeNumber);
+        followUp.setOrderNumber(orderNumber);
 
         // Lier au customer existant
-        exchange.setCustomer(sourceOrder.getCustomer());
+        followUp.setCustomer(sourceOrder.getCustomer());
 
         // Assignation : request.assignedToId > créateur (principal) > assigné de la commande source
         Long assignedToId = request.getAssignedToId() != null
                 ? request.getAssignedToId()
-                : principal.getId();
-        userRepository.findById(assignedToId).ifPresent(exchange::setAssignedTo);
-
-        // Articles du nouvel échange
-        for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
-            exchange.addItem(buildOrderItem(itemReq));
+                : (principal != null ? principal.getId() : null);
+        if (assignedToId != null) {
+            userRepository.findById(assignedToId).ifPresent(followUp::setAssignedTo);
         }
-        exchange.recalculateTotals();
 
-        // Démarrer directement en CONFIRME (échange déjà validé)
-        exchange.setStatus(OrderStatus.CONFIRME);
-        exchange.setConfirmedAt(LocalDateTime.now());
+        // Articles de la nouvelle commande
+        for (CreateOrderRequest.OrderItemRequest itemReq : request.getItems()) {
+            followUp.addItem(buildOrderItem(itemReq));
+        }
+        followUp.recalculateTotals();
 
-        Order saved = orderRepository.save(exchange);
+        // Démarrer directement en CONFIRME
+        followUp.setStatus(OrderStatus.CONFIRME);
+        followUp.setConfirmedAt(LocalDateTime.now());
+
+        Order saved = orderRepository.save(followUp);
 
         // Vérifier le stock avant de réserver (bloque la création si rupture)
         checkStockAvailability(saved);
@@ -214,8 +253,11 @@ public class OrderService {
         saved.setStockReserved(true);
 
         // Historique : NOUVEAU → CONFIRME
-        recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Échange créé depuis commande " + sourceOrder.getOrderNumber());
-        recordStatusChange(saved, OrderStatus.NOUVEAU, OrderStatus.CONFIRME, principal, "Échange confirmé automatiquement");
+        String typeLabel = isExchange ? "Échange" : "Commande additionnelle";
+        recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal,
+                typeLabel + " créée depuis commande " + sourceOrder.getOrderNumber());
+        recordStatusChange(saved, OrderStatus.NOUVEAU, OrderStatus.CONFIRME, principal,
+                typeLabel + " confirmée automatiquement");
 
         // Persister l'ordre pendant qu'il est encore MANAGED (avant que les
         // opérations stock ne vident le L1 cache via clearAutomatically=true)
@@ -224,7 +266,9 @@ public class OrderService {
         // Réservation stock (peut vider le L1 cache via clearAutomatically=true)
         reserveStockForOrder(saved);
 
-        log.info("Exchange order created: {} from source {} (exchange=true)", saved.getOrderNumber(), sourceOrder.getOrderNumber());
+        log.info("{} order created: {} from source {} (exchange={})",
+                isExchange ? "Exchange" : "Additional",
+                saved.getOrderNumber(), sourceOrder.getOrderNumber(), isExchange);
         // Rechargement frais (L1 cache potentiellement vidé par les opérations stock)
         return toDto(getOrderById(saved.getId()), true);
     }
