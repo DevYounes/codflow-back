@@ -97,12 +97,11 @@ public class OrderService {
         order.setShopifyOrderId(request.getShopifyOrderId());
         order.setExternalRef(request.getExternalRef());
         order.setDeliveryCityId(request.getDeliveryCityId());
+        order.setStatus(OrderStatus.NOUVEAU);
 
-        // Statut initial depuis le body, sinon NOUVEAU
-        OrderStatus initialStatus = request.getStatus() != null ? request.getStatus() : OrderStatus.NOUVEAU;
-        order.setStatus(initialStatus);
-
-        // Assignation explicite depuis le body — prioritaire sur le round-robin
+        // Assignation explicite depuis le body — prioritaire sur le round-robin.
+        // Sans ça, RoundRobinAssignmentService.assign() écrase l'assignedTo du body
+        // puisqu'il fait setAssignedTo() sans tester l'existant.
         if (request.getAssignedToId() != null) {
             userRepository.findById(request.getAssignedToId()).ifPresent(agent -> {
                 order.setAssignedTo(agent);
@@ -118,16 +117,15 @@ public class OrderService {
 
         Order saved = orderRepository.save(order);
 
-        // Record initial status history (reflète le statut réel, pas un NOUVEAU figé)
-        recordStatusChange(saved, null, initialStatus, principal, "Commande créée");
+        // Record initial status history
+        recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Commande créée");
 
         // Auto-assign via round-robin uniquement si aucune assignation explicite
         if (saved.getAssignedTo() == null) {
             roundRobinAssignmentService.assign(saved);
         }
 
-        log.info("Order created: {} from source {} with status {}",
-                saved.getOrderNumber(), saved.getSource(), saved.getStatus());
+        log.info("Order created: {} from source {}", saved.getOrderNumber(), saved.getSource());
         return toDto(saved, true);
     }
 

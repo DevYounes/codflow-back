@@ -1,7 +1,6 @@
 package com.codflow.backend.order.dto;
 
 import com.codflow.backend.order.enums.OrderSource;
-import com.codflow.backend.order.enums.OrderStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -46,9 +45,6 @@ public class CreateOrderRequest {
 
     private Long assignedToId;
     private String deliveryCityId;
-
-    /** Statut initial optionnel. Si null → NOUVEAU. */
-    private OrderStatus status;
 
     @NotEmpty(message = "La commande doit contenir au moins un article")
     @Valid
