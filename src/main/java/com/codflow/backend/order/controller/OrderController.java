@@ -164,4 +164,29 @@ public class OrderController {
                 .body(ApiResponse.success("Commande d'échange créée avec succès",
                         orderService.createExchangeOrder(id, request, principal)));
     }
+
+    @PostMapping("/{id}/additional")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'MAGASINIER')")
+    @Operation(
+        summary = "Créer une commande additionnelle pour un client satisfait",
+        description = """
+            Crée une nouvelle commande à partir d'une commande livrée (LIVRE) dont le
+            client est satisfait et souhaite commander un autre produit.
+            - Copie automatiquement le client, l'adresse et la ville de la commande source
+            - Les articles sont le nouveau produit demandé par le client (obligatoire)
+            - La commande démarre directement en statut CONFIRME
+            - is_exchange=false : commande payante standard, pas un échange
+              (aucun flag parcel-echange n'est envoyé à Ozon Express)
+            - Le stock est réservé immédiatement
+            - Accessible à tous les rôles (y compris MAGASINIER)
+            """
+    )
+    public ResponseEntity<ApiResponse<OrderDto>> createAdditionalOrder(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateOrderRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Commande additionnelle créée avec succès",
+                        orderService.createAdditionalOrder(id, request, principal)));
+    }
 }

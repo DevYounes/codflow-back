@@ -1,14 +1,19 @@
 package com.codflow.backend.customer.controller;
 
 import com.codflow.backend.common.dto.ApiResponse;
+import com.codflow.backend.common.dto.PageResponse;
 import com.codflow.backend.customer.dto.CustomerDto;
 import com.codflow.backend.customer.dto.UpdateCustomerRequest;
 import com.codflow.backend.customer.enums.CustomerStatus;
 import com.codflow.backend.customer.service.CustomerService;
+import com.codflow.backend.order.dto.OrderDto;
+import com.codflow.backend.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +27,7 @@ import java.util.Map;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final OrderService orderService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
@@ -76,5 +82,26 @@ public class CustomerController {
         String notes = body.get("notes");
         return ResponseEntity.ok(ApiResponse.success(
                 "Statut client mis à jour", customerService.updateStatus(id, status, notes)));
+    }
+
+    @GetMapping("/{id}/orders")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    @Operation(
+        summary = "Historique complet des commandes d'un client",
+        description = """
+            Retourne TOUTES les commandes d'un client, tous agents confondus.
+            Contrairement à GET /orders (qui filtre par agent assigné pour les AGENT),
+            cet endpoint permet à un agent de consulter l'historique complet d'un client
+            afin d'identifier les doublons, les clients non sérieux ou blacklistés avant
+            de traiter sa propre commande. Lecture seule.
+            """
+    )
+    public ResponseEntity<ApiResponse<PageResponse<OrderDto>>> getCustomerOrders(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        return ResponseEntity.ok(ApiResponse.success(
+                orderService.getOrdersByCustomer(id, pageable)));
     }
 }
