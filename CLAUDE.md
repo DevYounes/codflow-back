@@ -237,6 +237,29 @@ POST   /api/v1/supplier-orders/{id}/deliveries  # enregistrer réception (met à
 
 ---
 
+## API publique pour sites vitrines (CASTELLO)
+
+**Package :** `com.codflow.backend.publicapi`
+**Base path :** `/api/v1/public/**`
+**Auth :** en-tête `X-API-Key` (filtre `ApiKeyAuthenticationFilter`) — pas JWT.
+**Clé :** `app.castello.api-key` (env `CASTELLO_API_KEY`). Si absente → 503.
+
+### Endpoints
+```
+POST /api/v1/public/orders/castello   # Créer commande (idempotent via externalRef)
+GET  /api/v1/public/products          # Catalogue (actifs uniquement, stock disponible)
+GET  /api/v1/public/products/{sku}    # Un produit par SKU
+```
+
+Les commandes créées ont `source = CASTELLO_DIRECT`, statut initial `NOUVEAU`,
+et suivent le même cycle (round-robin, confirmation, expédition) que les
+commandes SHOPIFY/EXCEL/MANUAL. L'idempotence s'appuie sur `Order.externalRef`
+(champ existant, nouvellement indexé via `findByExternalRef`).
+
+Voir `docs/CASTELLO_INTEGRATION.md` pour le contrat complet, cURL et exemples.
+
+---
+
 ## Import Shopify
 
 **Service :** `ShopifyImportService`  
@@ -333,6 +356,7 @@ La livraison déclenche des changements de statut commande :
 | `STOCK_ALERT_CHECK_INTERVAL` | `3600000` (1h) | Intervalle check alertes stock |
 | `OZON_CUSTOMER_ID` | `79869` | ID client Ozon Express |
 | `OZON_API_KEY` | (valeur dev) | Clé API Ozon Express |
+| `CASTELLO_API_KEY` | (vide) | Clé API partagée avec le site CASTELLO (Next.js) pour `/api/v1/public/**`. Si vide → 503. |
 
 ---
 
