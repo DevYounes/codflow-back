@@ -62,6 +62,13 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     boolean existsByCustomerPhoneNormalized(String customerPhoneNormalized);
 
+    /**
+     * Toutes les commandes d'un client (non soft-deleted grâce au @SQLRestriction),
+     * tous agents confondus. Utilisé pour permettre à un agent de consulter l'historique
+     * complet d'un client (incl. commandes d'autres agents).
+     */
+    Page<Order> findByCustomerId(Long customerId, Pageable pageable);
+
     // ---- Agent-specific stats ----
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId AND o.status = :status")

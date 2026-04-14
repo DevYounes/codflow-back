@@ -503,6 +503,20 @@ public class OrderService {
     }
 
     /**
+     * Liste toutes les commandes d'un client (tous agents confondus).
+     *
+     * Contrairement à {@link #getOrders}, ce flux NE filtre PAS par agent —
+     * un agent peut ainsi consulter l'historique complet d'un client pour
+     * identifier les doublons, les clients non sérieux ou blacklistés
+     * avant de traiter sa propre commande.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<OrderDto> getOrdersByCustomer(Long customerId, Pageable pageable) {
+        Page<Order> page = orderRepository.findByCustomerId(customerId, pageable);
+        return PageResponse.of(page.map(o -> toDto(o, false)));
+    }
+
+    /**
      * Expands frontend-friendly status aliases to actual OrderStatus values.
      * CANCELLED maps to the full cancelled group (ANNULE, PAS_SERIEUX, FAKE_ORDER).
      * RETURNED maps to RETOURNE.
