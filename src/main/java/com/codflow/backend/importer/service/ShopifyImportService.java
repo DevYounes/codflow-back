@@ -538,8 +538,12 @@ public class ShopifyImportService {
             it.setVariantId(target.getId());
             if (target.getVariantSku() != null) it.setProductSku(target.getVariantSku());
 
-            // Recompose le nom affiché avec la nouvelle variante
-            String baseName = target.getProduct() != null ? target.getProduct().getName() : it.getProductName();
+            // Recompose le nom affiché avec la nouvelle variante.
+            // NB: target.getProduct() est LAZY — on ne peut pas appeler .getName() dessus
+            // hors session Hibernate. On relit le product via son repo (session dédiée).
+            String baseName = productRepository.findById(it.getProductId())
+                    .map(p -> p.getName())
+                    .orElse(it.getProductName());
             String suffix = blank(target.getColor())
                     ? target.getSize()
                     : target.getColor() + " / " + target.getSize();
