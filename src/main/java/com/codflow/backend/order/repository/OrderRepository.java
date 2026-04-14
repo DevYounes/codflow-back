@@ -62,6 +62,13 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     boolean existsByCustomerPhoneNormalized(String customerPhoneNormalized);
 
+    /**
+     * Toutes les commandes d'un client (non soft-deleted grâce au @SQLRestriction),
+     * tous agents confondus. Utilisé pour permettre à un agent de consulter l'historique
+     * complet d'un client (incl. commandes d'autres agents).
+     */
+    Page<Order> findByCustomerId(Long customerId, Pageable pageable);
+
     // ---- Agent-specific stats ----
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId AND o.status = :status")
@@ -74,6 +81,15 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     long countByAgentAndDateRange(@Param("agentId") Long agentId,
                                   @Param("from") LocalDateTime from,
                                   @Param("to") LocalDateTime to);
+
+    // ---- Salary commission counters ----
+
+    /** Commandes confirmées par un agent dont la confirmation a eu lieu dans la période (commissions « par confirmé »). */
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId " +
+           "AND o.confirmedAt IS NOT NULL AND o.confirmedAt BETWEEN :from AND :to")
+    long countConfirmedByAgentInPeriod(@Param("agentId") Long agentId,
+                                       @Param("from") LocalDateTime from,
+                                       @Param("to") LocalDateTime to);
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.assignedTo.id = :agentId AND o.potentialDuplicate = true")
     long countPotentialDuplicatesByAgent(@Param("agentId") Long agentId);

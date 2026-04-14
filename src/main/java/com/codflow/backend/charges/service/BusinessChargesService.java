@@ -14,6 +14,8 @@ import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.repository.DeliveryShipmentRepository;
 import com.codflow.backend.order.enums.OrderStatus;
 import com.codflow.backend.order.repository.OrderRepository;
+import com.codflow.backend.salary.enums.SalaryPaymentStatus;
+import com.codflow.backend.salary.repository.SalaryPaymentRepository;
 import com.codflow.backend.security.UserPrincipal;
 import com.codflow.backend.team.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,7 @@ public class BusinessChargesService {
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
+    private final SalaryPaymentRepository salaryPaymentRepository;
 
     // -------------------------------------------------------------------------
     // CRUD charges opérationnelles
@@ -169,7 +172,11 @@ public class BusinessChargesService {
 
         // --- Charges opérationnelles (saisies manuellement) ---
         BigDecimal pubCosts      = sumByType(BusinessChargeType.PUBLICITE,   effectiveFrom, effectiveTo);
-        BigDecimal salaryCosts   = sumByType(BusinessChargeType.SALAIRE,     effectiveFrom, effectiveTo);
+        // Salaires = charges manuelles de type SALAIRE + fiches de paie effectivement payées dans la période
+        BigDecimal manualSalaryCharges = sumByType(BusinessChargeType.SALAIRE, effectiveFrom, effectiveTo);
+        BigDecimal paidSalaries = nvl(salaryPaymentRepository.sumPaidBetween(
+                SalaryPaymentStatus.PAYE, effectiveFrom, effectiveTo));
+        BigDecimal salaryCosts   = manualSalaryCharges.add(paidSalaries);
         BigDecimal rentCosts     = sumByType(BusinessChargeType.LOYER,       effectiveFrom, effectiveTo);
         BigDecimal utilitiesCosts = sumByType(BusinessChargeType.ELECTRICITE, effectiveFrom, effectiveTo)
                 .add(sumByType(BusinessChargeType.EAU,      effectiveFrom, effectiveTo))

@@ -49,6 +49,22 @@ public interface DeliveryShipmentRepository extends JpaRepository<DeliveryShipme
 
     long countByStatus(ShipmentStatus status);
 
+    // ---- Salary commission counters ----
+
+    /** Colis livrés dans la période (par date effective de livraison). */
+    @Query("SELECT COUNT(s) FROM DeliveryShipment s WHERE s.status = 'DELIVERED' " +
+           "AND s.deliveredAt IS NOT NULL AND s.deliveredAt BETWEEN :from AND :to")
+    long countDeliveredInPeriod(@Param("from") java.time.LocalDateTime from,
+                                @Param("to") java.time.LocalDateTime to);
+
+    /** Colis livrés dans la période pour les commandes d'un agent donné. */
+    @Query("SELECT COUNT(s) FROM DeliveryShipment s WHERE s.status = 'DELIVERED' " +
+           "AND s.deliveredAt IS NOT NULL AND s.deliveredAt BETWEEN :from AND :to " +
+           "AND s.order.assignedTo.id = :agentId")
+    long countDeliveredByAgentInPeriod(@Param("agentId") Long agentId,
+                                       @Param("from") java.time.LocalDateTime from,
+                                       @Param("to") java.time.LocalDateTime to);
+
     @Modifying
     @Query(value = "DELETE FROM delivery_note_shipments WHERE shipment_id IN (SELECT id FROM delivery_shipments WHERE order_id IN :orderIds)", nativeQuery = true)
     void deleteNoteShipmentLinksByOrderIds(@Param("orderIds") List<Long> orderIds);
