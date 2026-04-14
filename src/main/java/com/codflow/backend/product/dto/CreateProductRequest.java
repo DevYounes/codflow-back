@@ -1,5 +1,6 @@
 package com.codflow.backend.product.dto;
 
+import com.codflow.backend.product.enums.ProductType;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,6 +17,9 @@ public class CreateProductRequest {
 
     @NotBlank(message = "Le nom est obligatoire")
     private String name;
+
+    /** Type de produit. Si null → PRODUIT (article vendu). CONSOMMABLE = emballage/matériel interne. */
+    private ProductType type;
 
     private String description;
 

@@ -9,6 +9,7 @@ import com.codflow.backend.product.dto.ProductDto;
 import com.codflow.backend.product.dto.ProductVariantDto;
 import com.codflow.backend.product.entity.Product;
 import com.codflow.backend.product.entity.ProductVariant;
+import com.codflow.backend.product.enums.ProductType;
 import com.codflow.backend.product.repository.ProductRepository;
 import com.codflow.backend.product.repository.ProductSpecification;
 import com.codflow.backend.product.repository.ProductVariantRepository;
@@ -47,6 +48,7 @@ public class ProductService {
         Product product = new Product();
         product.setSku(request.getSku());
         product.setName(request.getName());
+        product.setType(request.getType() != null ? request.getType() : ProductType.PRODUIT);
         product.setDescription(request.getDescription());
         product.setPrice(request.getPrice());
         product.setCostPrice(request.getCostPrice());
@@ -77,6 +79,7 @@ public class ProductService {
         }
         if (StringUtils.hasText(request.getSku())) product.setSku(request.getSku());
         if (StringUtils.hasText(request.getName())) product.setName(request.getName());
+        if (request.getType() != null) product.setType(request.getType());
         if (request.getDescription() != null) product.setDescription(request.getDescription());
         if (request.getPrice() != null) product.setPrice(request.getPrice());
         if (request.getCostPrice() != null) product.setCostPrice(request.getCostPrice());
@@ -87,8 +90,8 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ProductDto> getProducts(String search, Pageable pageable) {
-        Page<Product> page = productRepository.findAll(ProductSpecification.withFilters(search), pageable);
+    public PageResponse<ProductDto> getProducts(String search, ProductType type, Pageable pageable) {
+        Page<Product> page = productRepository.findAll(ProductSpecification.withFilters(search, type), pageable);
         return PageResponse.of(page.map(this::toDto));
     }
 
@@ -117,6 +120,9 @@ public class ProductService {
     @Transactional
     public ProductVariantDto addVariant(Long productId, CreateProductVariantRequest request) {
         Product product = getProductById(productId);
+        if (product.getType() == ProductType.CONSOMMABLE) {
+            throw new BusinessException("Les consommables ne peuvent pas avoir de variantes");
+        }
         if (productVariantRepository.existsByProductIdAndColorAndSize(productId, request.getColor(), request.getSize())) {
             throw new BusinessException("Une variante avec cette couleur et taille existe déjà");
         }
@@ -156,14 +162,18 @@ public class ProductService {
     }
 
     public ProductDto toDto(Product product) {
-        List<ProductVariantDto> variants = productVariantRepository
-                .findByProductIdAndActiveTrue(product.getId())
-                .stream().map(this::toVariantDto).toList();
+        // Les CONSOMMABLE n'ont pas de variantes — inutile de requêter.
+        List<ProductVariantDto> variants = product.getType() == ProductType.CONSOMMABLE
+                ? List.of()
+                : productVariantRepository.findByProductIdAndActiveTrue(product.getId())
+                        .stream().map(this::toVariantDto).toList();
 
         return ProductDto.builder()
                 .id(product.getId())
                 .sku(product.getSku())
                 .name(product.getName())
+                .type(product.getType())
+                .typeLabel(product.getType() != null ? product.getType().getLabel() : null)
                 .description(product.getDescription())
                 .price(product.getPrice())
                 .costPrice(product.getCostPrice())

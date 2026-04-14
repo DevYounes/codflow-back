@@ -48,6 +48,10 @@ public class StockService {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Produit", request.getProductId()));
 
+        // Mode raccourci : quantity signée + movementType null → on dérive le type
+        // (positif = IN, négatif = OUT) puis on travaille en quantité absolue.
+        normalizeMovement(request);
+
         // --- Variant-level adjustment ---
         if (request.getVariantId() != null) {
             ProductVariant variant = variantRepository.findById(request.getVariantId())
@@ -82,6 +86,27 @@ public class StockService {
         stockMovementRepository.save(movement);
         checkAndCreateAlerts(product);
         return toMovementDto(movement);
+    }
+
+    /**
+     * Normalise la requête pour supporter les deux conventions :
+     *  - {movementType=IN/OUT, quantity > 0} : mode explicite
+     *  - {movementType=null, quantity signée} : on dérive le type depuis le signe
+     *    (positif → IN, négatif → OUT) puis on remplace la quantité par sa valeur absolue.
+     */
+    private void normalizeMovement(AdjustStockRequest request) {
+        if (request.getQuantity() == null || request.getQuantity() == 0) {
+            throw new BusinessException("La quantité ne peut pas être nulle ou zéro");
+        }
+        if (request.getMovementType() == null) {
+            int q = request.getQuantity();
+            request.setMovementType(q > 0 ? MovementType.IN : MovementType.OUT);
+            request.setQuantity(Math.abs(q));
+        } else if (request.getQuantity() < 0) {
+            // Mode explicite : on tolère une quantité négative en la rendant positive
+            // (le movementType reste celui demandé)
+            request.setQuantity(Math.abs(request.getQuantity()));
+        }
     }
 
     private int computeNewStock(int current, AdjustStockRequest request) {

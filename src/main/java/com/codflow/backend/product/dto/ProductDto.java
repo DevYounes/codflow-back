@@ -1,5 +1,6 @@
 package com.codflow.backend.product.dto;
 
+import com.codflow.backend.product.enums.ProductType;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -13,6 +14,8 @@ public class ProductDto {
     private Long id;
     private String sku;
     private String name;
+    private ProductType type;
+    private String typeLabel;
     private String description;
     private BigDecimal price;
     private BigDecimal costPrice;
