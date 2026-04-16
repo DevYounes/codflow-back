@@ -29,6 +29,10 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     Optional<Order> findByShopifyOrderId(String shopifyOrderId);
 
+    Optional<Order> findByExternalRef(String externalRef);
+
+    boolean existsByExternalRef(String externalRef);
+
     @Query("SELECT o FROM Order o WHERE o.assignedTo.id = :agentId AND o.status NOT IN " +
            "('CONFIRME', 'ANNULE', 'PAS_SERIEUX', 'FAKE_ORDER', 'DOUBLON', 'LIVRE', 'RETOURNE')")
     List<Order> findActiveOrdersByAgent(@Param("agentId") Long agentId);
