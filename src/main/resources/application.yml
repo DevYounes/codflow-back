@@ -69,7 +69,7 @@ app:
     # appeler les endpoints publics /api/v1/public/**.
     # À définir en production via la variable d'env CASTELLO_API_KEY.
     # Si vide, les endpoints publics renvoient 503.
-    api-key: ${CASTELLO_API_KEY:}
+    api-key: ${CASTELLO_API_KEY:e6965fe023b184801ae9231716e251d646d832775b9b6fde38a1268dec114da4}
 
   frontend:
     url: ${FRONTEND_URL:http://localhost:4200}
