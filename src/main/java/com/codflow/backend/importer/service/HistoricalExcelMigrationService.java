@@ -108,7 +108,19 @@ public class HistoricalExcelMigrationService {
                 // Order IDs from Excel may be numeric (stored as double), normalize
                 String shopifyOrderId = rawOrderId.replaceAll("\\.0+$", "").trim();
 
+                // L'Excel peut contenir soit l'ID interne Shopify (ex: "6867698450661")
+                // soit le numéro d'affichage (ex: "1001" ou "#1001").
+                // On tente les deux : d'abord par shopify_order_id, puis par order_number
+                // avec le préfixe "SHOP-" appliqué lors de l'import Shopify.
                 Order order = orderRepository.findByShopifyOrderId(shopifyOrderId).orElse(null);
+                if (order == null) {
+                    String normalized = shopifyOrderId.replace("#", "");
+                    order = orderRepository.findByOrderNumber("SHOP-" + normalized).orElse(null);
+                }
+                if (order == null) {
+                    // Dernière tentative : orderNumber brut (cas d'un numéro personnalisé)
+                    order = orderRepository.findByOrderNumber(shopifyOrderId).orElse(null);
+                }
                 if (order == null) {
                     skipped.add("Ligne " + (r + 1) + " [" + shopifyOrderId + "]: commande introuvable en base (pas encore importée depuis Shopify)");
                     continue;
