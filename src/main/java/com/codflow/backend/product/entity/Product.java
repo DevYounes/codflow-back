@@ -1,6 +1,7 @@
 package com.codflow.backend.product.entity;
 
 import com.codflow.backend.common.entity.BaseEntity;
+import com.codflow.backend.product.enums.ProductType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,6 +21,14 @@ public class Product extends BaseEntity {
 
     @Column(nullable = false)
     private String name;
+
+    /**
+     * Type de produit. Les CONSOMMABLE (emballages, étiquettes...) n'ont pas
+     * de variantes et leur stock est géré directement sur currentStock.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ProductType type = ProductType.PRODUIT;
 
     @Column(columnDefinition = "TEXT")
     private String description;

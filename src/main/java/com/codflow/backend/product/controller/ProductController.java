@@ -6,6 +6,7 @@ import com.codflow.backend.product.dto.CreateProductRequest;
 import com.codflow.backend.product.dto.CreateProductVariantRequest;
 import com.codflow.backend.product.dto.ProductDto;
 import com.codflow.backend.product.dto.ProductVariantDto;
+import com.codflow.backend.product.enums.ProductType;
 import com.codflow.backend.product.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,10 +41,11 @@ public class ProductController {
     @Operation(summary = "Lister les produits")
     public ResponseEntity<ApiResponse<PageResponse<ProductDto>>> getProducts(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) ProductType type,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return ResponseEntity.ok(ApiResponse.success(productService.getProducts(search, pageable)));
+        return ResponseEntity.ok(ApiResponse.success(productService.getProducts(search, type, pageable)));
     }
 
     @GetMapping("/low-stock")
