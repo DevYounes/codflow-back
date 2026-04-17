@@ -114,9 +114,15 @@ public class OrderCostBackfillService {
             // Aucun matching possible
             unmatched++;
             String skuInfo = (sku != null && !sku.isBlank()) ? " SKU='" + sku + "'" : "";
+            String orderNumber;
+            try {
+                orderNumber = item.getOrder().getOrderNumber();
+            } catch (Exception e) {
+                orderNumber = "?";
+            }
             unmatchedDetails.add(
                     "Item #" + item.getId()
-                    + " (commande " + item.getOrder().getOrderNumber() + ")"
+                    + " (commande " + orderNumber + ")"
                     + " — '" + item.getProductName() + "'" + skuInfo + " : introuvable");
             log.warn("[BACKFILL] Introuvable — item #{} '{}'", item.getId(), item.getProductName());
         }

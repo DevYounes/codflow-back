@@ -15,8 +15,13 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
     boolean existsByVariantId(Long variantId);
 
-    /** Tous les items non encore liés à un produit (à relier via le backfill). */
-    @Query("SELECT i FROM OrderItem i WHERE i.product IS NULL")
+    /**
+     * Tous les items non encore liés à un produit (à relier via le backfill).
+     * Le JOIN avec Order déclenche le @SQLRestriction("deleted = false") et
+     * exclut donc les items dont la commande a été soft-deleted — évite un
+     * EntityNotFoundException lors du lazy-load de item.order dans le backfill.
+     */
+    @Query("SELECT i FROM OrderItem i JOIN i.order o WHERE i.product IS NULL")
     List<OrderItem> findByProductIsNull();
 
     /**
