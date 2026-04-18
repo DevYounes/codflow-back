@@ -95,6 +95,16 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.getVariants(id)));
     }
 
+    @PutMapping("/variants/{variantId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Mettre à jour une variante (couleur, taille, SKU, prix, coût)")
+    public ResponseEntity<ApiResponse<ProductVariantDto>> updateVariant(
+            @PathVariable Long variantId,
+            @RequestBody CreateProductVariantRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Variante mise à jour", productService.updateVariant(variantId, request)));
+    }
+
     @DeleteMapping("/variants/{variantId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Supprimer définitivement une variante (bloqué si liée à des commandes)")

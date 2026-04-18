@@ -145,6 +145,35 @@ public class ProductService {
     }
 
     @Transactional
+    public ProductVariantDto updateVariant(Long variantId, CreateProductVariantRequest request) {
+        ProductVariant variant = productVariantRepository.findById(variantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Variante", variantId));
+
+        Long productId = variant.getProduct().getId();
+        String newColor = request.getColor() != null ? request.getColor() : variant.getColor();
+        String newSize  = request.getSize()  != null ? request.getSize()  : variant.getSize();
+
+        boolean colorOrSizeChanged =
+                !java.util.Objects.equals(newColor, variant.getColor())
+             || !java.util.Objects.equals(newSize,  variant.getSize());
+
+        if (colorOrSizeChanged
+                && productVariantRepository.existsByProductIdAndColorAndSize(productId, newColor, newSize)) {
+            throw new BusinessException("Une variante avec cette couleur et taille existe déjà");
+        }
+
+        variant.setColor(newColor);
+        variant.setSize(newSize);
+        if (request.getVariantSku() != null)  variant.setVariantSku(request.getVariantSku());
+        if (request.getPriceOverride() != null) variant.setPriceOverride(request.getPriceOverride());
+        if (request.getCostPrice() != null)     variant.setCostPrice(request.getCostPrice());
+        // currentStock n'est PAS modifié ici — il est géré exclusivement par StockService
+        // (mouvements, réservations, CMUP fournisseur) pour garder l'historique cohérent.
+
+        return toVariantDto(productVariantRepository.save(variant));
+    }
+
+    @Transactional
     public void deleteVariant(Long variantId) {
         ProductVariant variant = productVariantRepository.findById(variantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Variante", variantId));
