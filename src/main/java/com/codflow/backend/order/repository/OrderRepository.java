@@ -34,7 +34,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     boolean existsByExternalRef(String externalRef);
 
     @Query("SELECT o FROM Order o WHERE o.assignedTo.id = :agentId AND o.status NOT IN " +
-           "('CONFIRME', 'ANNULE', 'PAS_SERIEUX', 'FAKE_ORDER', 'DOUBLON', 'LIVRE', 'RETOURNE')")
+           "('CONFIRME', 'ANNULE', 'PAS_SERIEUX', 'FAKE_ORDER', 'DOUBLON', 'CLIENT_BLACKLISTE', 'LIVRE', 'RETOURNE')")
     List<Order> findActiveOrdersByAgent(@Param("agentId") Long agentId);
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.status = :status")

@@ -162,7 +162,7 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
     @Query("""
             SELECT COUNT(o) FROM Order o WHERE o.customer.id = :customerId
-            AND o.status IN ('ANNULE','PAS_SERIEUX','FAKE_ORDER')
+            AND o.status IN ('ANNULE','PAS_SERIEUX','FAKE_ORDER','CLIENT_BLACKLISTE')
             """)
     long countCancelledOrdersByCustomer(@Param("customerId") Long customerId);
 

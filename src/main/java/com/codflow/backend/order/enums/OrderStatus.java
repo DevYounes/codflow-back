@@ -29,6 +29,7 @@ public enum OrderStatus {
     PAS_SERIEUX("Pas sérieux", false, true),
     FAKE_ORDER("Fake order", false, true),
     DOUBLON("Doublon", false, true),
+    CLIENT_BLACKLISTE("Client blacklisté", false, true),
 
     // Delivery states (after confirmation)
     EN_PREPARATION("En préparation", false, false),
@@ -53,7 +54,8 @@ public enum OrderStatus {
     }
 
     public boolean isCancelled() {
-        return this == ANNULE || this == PAS_SERIEUX || this == FAKE_ORDER || this == DOUBLON;
+        return this == ANNULE || this == PAS_SERIEUX || this == FAKE_ORDER
+                || this == DOUBLON || this == CLIENT_BLACKLISTE;
     }
 
     public boolean isDelivered() {

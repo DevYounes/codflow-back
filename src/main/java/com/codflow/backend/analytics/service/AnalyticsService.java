@@ -268,7 +268,8 @@ public class AnalyticsService {
     }
 
     private static final List<OrderStatus> CANCELLED_STATUSES = List.of(
-            OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX, OrderStatus.FAKE_ORDER);
+            OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX, OrderStatus.FAKE_ORDER,
+            OrderStatus.CLIENT_BLACKLISTE);
 
     private static final List<OrderStatus> PENDING_STATUSES = List.of(
             OrderStatus.NOUVEAU, OrderStatus.APPEL_1, OrderStatus.APPEL_2, OrderStatus.APPEL_3,
@@ -346,7 +347,8 @@ public class AnalyticsService {
     private long countCancelled() {
         return orderRepository.countByStatus(OrderStatus.ANNULE) +
                orderRepository.countByStatus(OrderStatus.PAS_SERIEUX) +
-               orderRepository.countByStatus(OrderStatus.FAKE_ORDER);
+               orderRepository.countByStatus(OrderStatus.FAKE_ORDER) +
+               orderRepository.countByStatus(OrderStatus.CLIENT_BLACKLISTE);
     }
 
     private long countCancelledFiltered(LocalDateTime from, LocalDateTime to) {

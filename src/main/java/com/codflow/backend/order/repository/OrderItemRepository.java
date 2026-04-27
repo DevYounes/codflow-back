@@ -39,7 +39,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             SUM(i.quantity),
             SUM(CASE WHEN i.order.status = 'LIVRE'    THEN i.quantity ELSE 0 END),
             SUM(CASE WHEN i.order.status = 'RETOURNE' THEN i.quantity ELSE 0 END),
-            SUM(CASE WHEN i.order.status IN ('ANNULE','PAS_SERIEUX','FAKE_ORDER')
+            SUM(CASE WHEN i.order.status IN ('ANNULE','PAS_SERIEUX','FAKE_ORDER','CLIENT_BLACKLISTE')
                                                        THEN i.quantity ELSE 0 END),
             SUM(CASE WHEN i.order.status = 'LIVRE'
                      THEN i.totalPrice ELSE 0 END),
@@ -63,7 +63,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             SUM(i.quantity),
             SUM(CASE WHEN i.order.status = 'LIVRE'    THEN i.quantity ELSE 0 END),
             SUM(CASE WHEN i.order.status = 'RETOURNE' THEN i.quantity ELSE 0 END),
-            SUM(CASE WHEN i.order.status IN ('ANNULE','PAS_SERIEUX','FAKE_ORDER')
+            SUM(CASE WHEN i.order.status IN ('ANNULE','PAS_SERIEUX','FAKE_ORDER','CLIENT_BLACKLISTE')
                                                        THEN i.quantity ELSE 0 END),
             SUM(CASE WHEN i.order.status = 'LIVRE'
                      THEN i.totalPrice ELSE 0 END),

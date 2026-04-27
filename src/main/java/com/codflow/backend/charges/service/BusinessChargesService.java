@@ -111,7 +111,8 @@ public class BusinessChargesService {
         long returnedOrders = orderRepository.countByStatusAndDateRange(
                 OrderStatus.RETOURNE, fromDt, toDt);
         long cancelledOrders = orderRepository.countByStatusesAndDateRange(
-                EnumSet.of(OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX, OrderStatus.FAKE_ORDER),
+                EnumSet.of(OrderStatus.ANNULE, OrderStatus.PAS_SERIEUX, OrderStatus.FAKE_ORDER,
+                        OrderStatus.CLIENT_BLACKLISTE),
                 fromDt, toDt);
         double deliveryRate = totalOrders > 0
                 ? Math.round((double) deliveredOrders / totalOrders * 10000.0) / 100.0

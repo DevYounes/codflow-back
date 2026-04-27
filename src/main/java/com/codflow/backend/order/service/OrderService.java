@@ -97,7 +97,16 @@ public class OrderService {
         order.setShopifyOrderId(request.getShopifyOrderId());
         order.setExternalRef(request.getExternalRef());
         order.setDeliveryCityId(request.getDeliveryCityId());
-        order.setStatus(OrderStatus.NOUVEAU);
+
+        // Si le client est blacklisté, la commande est rejetée d'emblée
+        boolean customerBlacklisted = customer != null
+                && customer.getStatus() == com.codflow.backend.customer.enums.CustomerStatus.BLACKLISTED;
+        if (customerBlacklisted) {
+            order.setStatus(OrderStatus.CLIENT_BLACKLISTE);
+            order.setCancelledAt(LocalDateTime.now());
+        } else {
+            order.setStatus(OrderStatus.NOUVEAU);
+        }
 
         // Assignation explicite depuis le body — prioritaire sur le round-robin.
         // Sans ça, RoundRobinAssignmentService.assign() écrase l'assignedTo du body
@@ -118,10 +127,13 @@ public class OrderService {
         Order saved = orderRepository.save(order);
 
         // Record initial status history
-        recordStatusChange(saved, null, OrderStatus.NOUVEAU, principal, "Commande créée");
+        String initialNote = customerBlacklisted
+                ? "Commande rejetée — client blacklisté"
+                : "Commande créée";
+        recordStatusChange(saved, null, saved.getStatus(), principal, initialNote);
 
-        // Auto-assign via round-robin uniquement si aucune assignation explicite
-        if (saved.getAssignedTo() == null) {
+        // Pas de round-robin pour une commande déjà rejetée
+        if (saved.getAssignedTo() == null && !customerBlacklisted) {
             roundRobinAssignmentService.assign(saved);
         }
 
@@ -518,7 +530,7 @@ public class OrderService {
 
     /**
      * Expands frontend-friendly status aliases to actual OrderStatus values.
-     * CANCELLED maps to the full cancelled group (ANNULE, PAS_SERIEUX, FAKE_ORDER).
+     * CANCELLED maps to the full cancelled group (ANNULE, PAS_SERIEUX, FAKE_ORDER, CLIENT_BLACKLISTE).
      * RETURNED maps to RETOURNE.
      */
     private Collection<OrderStatus> expandStatusAliases(Collection<String> rawStatuses) {
@@ -526,7 +538,12 @@ public class OrderService {
         List<OrderStatus> result = new ArrayList<>();
         for (String s : rawStatuses) {
             switch (s.toUpperCase()) {
-                case "CANCELLED" -> { result.add(OrderStatus.ANNULE); result.add(OrderStatus.PAS_SERIEUX); result.add(OrderStatus.FAKE_ORDER); }
+                case "CANCELLED" -> {
+                    result.add(OrderStatus.ANNULE);
+                    result.add(OrderStatus.PAS_SERIEUX);
+                    result.add(OrderStatus.FAKE_ORDER);
+                    result.add(OrderStatus.CLIENT_BLACKLISTE);
+                }
                 case "RETURNED"  -> result.add(OrderStatus.RETOURNE);
                 default -> {
                     try { result.add(OrderStatus.valueOf(s.toUpperCase())); }
