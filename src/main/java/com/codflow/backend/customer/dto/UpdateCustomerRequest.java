@@ -12,5 +12,6 @@ public class UpdateCustomerRequest {
     private String address;
     private String ville;
     private CustomerStatus status;
+    private String statusReason;
     private String notes;
 }

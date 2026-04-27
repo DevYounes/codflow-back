@@ -79,9 +79,10 @@ public class CustomerController {
             @PathVariable Long id,
             @RequestBody Map<String, String> body) {
         CustomerStatus status = CustomerStatus.valueOf(body.get("status").toUpperCase());
+        String statusReason = body.get("statusReason");
         String notes = body.get("notes");
         return ResponseEntity.ok(ApiResponse.success(
-                "Statut client mis à jour", customerService.updateStatus(id, status, notes)));
+                "Statut client mis à jour", customerService.updateStatus(id, status, statusReason, notes)));
     }
 
     @GetMapping("/{id}/orders")

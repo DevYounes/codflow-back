@@ -114,6 +114,8 @@ public class CustomerService {
             customer.setVille(request.getVille());
         if (request.getStatus() != null)
             customer.setStatus(request.getStatus());
+        if (request.getStatusReason() != null)
+            customer.setStatusReason(request.getStatusReason());
         if (request.getNotes() != null)
             customer.setNotes(request.getNotes());
 
@@ -121,13 +123,14 @@ public class CustomerService {
     }
 
     /**
-     * Convenience endpoint: change only the status + optional note.
+     * Convenience endpoint: change only the status + optional motif + optional note.
      */
     @Transactional
-    public CustomerDto updateStatus(Long id, CustomerStatus status, String notes) {
+    public CustomerDto updateStatus(Long id, CustomerStatus status, String statusReason, String notes) {
         Customer customer = customerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Client", id));
         customer.setStatus(status);
+        if (statusReason != null) customer.setStatusReason(statusReason);
         if (notes != null) customer.setNotes(notes);
         return toDto(customerRepository.save(customer));
     }
@@ -273,6 +276,7 @@ public class CustomerService {
                 .ville(c.getVille())
                 .status(c.getStatus())
                 .statusLabel(c.getStatus().getLabel())
+                .statusReason(c.getStatusReason())
                 .notes(c.getNotes())
                 .createdAt(c.getCreatedAt())
                 .totalOrders(total)
