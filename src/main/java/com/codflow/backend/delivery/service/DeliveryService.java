@@ -14,8 +14,6 @@ import com.codflow.backend.delivery.enums.ShipmentStatus;
 import com.codflow.backend.delivery.provider.DeliveryProviderAdapter;
 import com.codflow.backend.delivery.provider.DeliveryProviderRegistry;
 import com.codflow.backend.delivery.provider.dto.*;
-import com.codflow.backend.customer.entity.Customer;
-import com.codflow.backend.customer.service.CustomerService;
 import com.codflow.backend.delivery.provider.ozon.OzonCityDto;
 import com.codflow.backend.delivery.provider.ozon.OzonCityService;
 import com.codflow.backend.delivery.repository.DeliveryProviderRepository;
@@ -51,7 +49,6 @@ public class DeliveryService {
     private final OrderService orderService;
     private final DeliveryProviderRegistry providerRegistry;
     private final OzonCityService ozonCityService;
-    private final CustomerService customerService;
 
     @Transactional
     public DeliveryShipmentDto createShipment(CreateShipmentRequest request) {
@@ -345,24 +342,6 @@ public class DeliveryService {
             orderService.updateStatus(shipment.getOrder().getId(), statusUpdate, null);
         } catch (Exception e) {
             log.error("Could not update order status for delivery update: {}", e.getMessage());
-        }
-
-        // Après une annulation, vérifier si le client doit être flagué NON_SERIEUX
-        if (newStatus == ShipmentStatus.CANCELLED) {
-            Customer customer = shipment.getOrder().getCustomer();
-            if (customer != null) {
-                long totalCancelled = shipmentRepository.sumCancelledAttemptsByCustomerId(customer.getId());
-                customerService.recordDeliveryCancellation(customer, totalCancelled);
-            }
-        }
-
-        // Après un refus explicite, vérifier si le client doit être flagué NON_SERIEUX
-        if (newStatus == ShipmentStatus.FAILED_DELIVERY && shipment.getRefusedAttempts() > 0) {
-            Customer customer = shipment.getOrder().getCustomer();
-            if (customer != null) {
-                long totalRefused = shipmentRepository.sumRefusedAttemptsByCustomerId(customer.getId());
-                customerService.recordDeliveryRefusal(customer, totalRefused);
-            }
         }
     }
 

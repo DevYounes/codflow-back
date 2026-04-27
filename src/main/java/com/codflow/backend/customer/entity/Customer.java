@@ -40,10 +40,6 @@ public class Customer extends BaseEntity {
     @Column(nullable = false, length = 30)
     private CustomerStatus status = CustomerStatus.ACTIVE;
 
-    /** Motif/libellé associé au statut (ex : raison du blacklist). */
-    @Column(name = "status_reason", length = 255)
-    private String statusReason;
-
     @Column(columnDefinition = "TEXT")
     private String notes;
 

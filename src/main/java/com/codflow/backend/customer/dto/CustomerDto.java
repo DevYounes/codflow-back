@@ -17,7 +17,6 @@ public class CustomerDto {
     private String ville;
     private CustomerStatus status;
     private String statusLabel;
-    private String statusReason;
     private String notes;
     private LocalDateTime createdAt;
 

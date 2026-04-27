@@ -31,13 +31,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class CustomerService {
 
-    // Auto-tag as FIDELE when confirmed orders reach this threshold
-    private static final int FIDELE_THRESHOLD = 3;
-    // Auto-tag as NON_SERIEUX when cumulative delivery cancellations reach this threshold
-    private static final int NON_SERIEUX_CANCEL_THRESHOLD = 3;
-    // Un refus est un acte délibéré — seuil plus bas que les annulations
-    private static final int NON_SERIEUX_REFUSAL_THRESHOLD = 2;
-
     private final CustomerRepository customerRepository;
     private final OrderRepository orderRepository;
     private final DeliveryShipmentRepository shipmentRepository;
@@ -114,8 +107,6 @@ public class CustomerService {
             customer.setVille(request.getVille());
         if (request.getStatus() != null)
             customer.setStatus(request.getStatus());
-        if (request.getStatusReason() != null)
-            customer.setStatusReason(request.getStatusReason());
         if (request.getNotes() != null)
             customer.setNotes(request.getNotes());
 
@@ -123,14 +114,13 @@ public class CustomerService {
     }
 
     /**
-     * Convenience endpoint: change only the status + optional motif + optional note.
+     * Convenience endpoint: change only the status + optional note.
      */
     @Transactional
-    public CustomerDto updateStatus(Long id, CustomerStatus status, String statusReason, String notes) {
+    public CustomerDto updateStatus(Long id, CustomerStatus status, String notes) {
         Customer customer = customerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Client", id));
         customer.setStatus(status);
-        if (statusReason != null) customer.setStatusReason(statusReason);
         if (notes != null) customer.setNotes(notes);
         return toDto(customerRepository.save(customer));
     }
@@ -188,74 +178,6 @@ public class CustomerService {
         log.info("Client {} (id={}) supprimé avec {} commande(s)", customerName, id, orderIds.size());
     }
 
-    /**
-     * Appelé après chaque annulation de livraison Ozon ("Annulé").
-     * Si le total des tentatives annulées atteint le seuil, le client est tagué NON_SERIEUX.
-     * Ne déclasse jamais un client déjà FIDELE ou BLACKLISTED.
-     *
-     * @param customer        l'entité cliente (doit être MANAGED dans la transaction courante)
-     * @param totalCancelled  somme de tous les cancelled_attempts sur toutes ses commandes
-     */
-    @Transactional
-    public void recordDeliveryCancellation(Customer customer, long totalCancelled) {
-        // Ne pas écraser les statuts manuels plus graves
-        if (customer.getStatus() == CustomerStatus.BLACKLISTED
-                || customer.getStatus() == CustomerStatus.NON_SERIEUX) {
-            return;
-        }
-        if (totalCancelled >= NON_SERIEUX_CANCEL_THRESHOLD) {
-            customer.setStatus(CustomerStatus.NON_SERIEUX);
-            String note = "Flagué automatiquement : " + totalCancelled
-                    + " tentative(s) de livraison annulée(s) par le transporteur.";
-            customer.setNotes(note);
-            customerRepository.save(customer);
-            log.warn("[CLIENT NON-SERIEUX] {} (id={}) — {} annulations de livraison",
-                    customer.getFullName(), customer.getId(), totalCancelled);
-        }
-    }
-
-    /**
-     * Appelé après chaque refus explicite d'un colis ("Refusé" chez Ozon).
-     * Un refus est un acte délibéré du client (pas une absence) — seuil plus bas que les annulations.
-     * Flagué NON_SERIEUX à partir de 2 refus cumulés sur toutes ses commandes.
-     *
-     * @param customer     l'entité cliente (doit être MANAGED dans la transaction courante)
-     * @param totalRefused somme de tous les refused_attempts sur toutes ses commandes
-     */
-    @Transactional
-    public void recordDeliveryRefusal(Customer customer, long totalRefused) {
-        if (customer.getStatus() == CustomerStatus.BLACKLISTED
-                || customer.getStatus() == CustomerStatus.NON_SERIEUX) {
-            return;
-        }
-        if (totalRefused >= NON_SERIEUX_REFUSAL_THRESHOLD) {
-            customer.setStatus(CustomerStatus.NON_SERIEUX);
-            String note = "Flagué automatiquement : " + totalRefused
-                    + " refus explicite(s) du colis à la porte (perte frais livraison).";
-            customer.setNotes(note);
-            customerRepository.save(customer);
-            log.warn("[CLIENT NON-SERIEUX] {} (id={}) — {} refus de livraison à la porte",
-                    customer.getFullName(), customer.getId(), totalRefused);
-        }
-    }
-
-    /**
-     * After each confirmed order, re-evaluate if customer should be tagged FIDELE.
-     * Only promotes ACTIVE → FIDELE, never demotes.
-     */
-    @Transactional
-    public void refreshFideleStatus(Long customerId) {
-        customerRepository.findById(customerId).ifPresent(customer -> {
-            if (customer.getStatus() != CustomerStatus.ACTIVE) return;
-            long confirmed = customerRepository.countConfirmedOrdersByCustomer(customerId);
-            if (confirmed >= FIDELE_THRESHOLD) {
-                customer.setStatus(CustomerStatus.FIDELE);
-                customerRepository.save(customer);
-                log.info("Customer {} tagged as FIDELE after {} confirmed orders", customerId, confirmed);
-            }
-        });
-    }
-
     // ── Mapping ──────────────────────────────────────────────────────────────
 
     private CustomerDto toDto(Customer c) {
@@ -276,7 +198,6 @@ public class CustomerService {
                 .ville(c.getVille())
                 .status(c.getStatus())
                 .statusLabel(c.getStatus().getLabel())
-                .statusReason(c.getStatusReason())
                 .notes(c.getNotes())
                 .createdAt(c.getCreatedAt())
                 .totalOrders(total)
