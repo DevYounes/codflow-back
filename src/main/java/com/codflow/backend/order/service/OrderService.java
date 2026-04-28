@@ -322,11 +322,16 @@ public class OrderService {
         // ── Modification des champs de l'ordre ──────────────────────────────────
         order.setStatus(newStatus);
 
+        // deliveryCityId peut être ajouté/corrigé à chaque (re)confirmation,
+        // pas seulement à la première : un agent peut remettre une commande à
+        // NOUVEAU pour la corriger puis la re-confirmer avec la bonne ville Ozon.
+        if (newStatus.isConfirmed()
+                && request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()) {
+            order.setDeliveryCityId(request.getDeliveryCityId());
+        }
+
         if (newStatus.isConfirmed() && order.getConfirmedAt() == null) {
             order.setConfirmedAt(LocalDateTime.now());
-            if (request.getDeliveryCityId() != null && !request.getDeliveryCityId().isBlank()) {
-                order.setDeliveryCityId(request.getDeliveryCityId());
-            }
             if (shouldReserve) {
                 order.setStockReserved(true);
             }
