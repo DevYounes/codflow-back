@@ -277,11 +277,20 @@ public class ShopifyImportService {
                 }
             }
 
-            // If we got fewer than PAGE_LIMIT, no more pages
-            if (ordersNode.size() < PAGE_LIMIT) break;
-
-            // Next page starts after the last order in this batch (pagination only)
-            pageSinceId = ordersNode.get(ordersNode.size() - 1).path("id").asLong();
+            // Avance toujours le curseur vers le plus grand id interne vu dans cette page,
+            // puis re-tente. On arrête uniquement quand Shopify renvoie 0 commande.
+            //
+            // ⚠️ Ne PAS casser la boucle sur "size() < PAGE_LIMIT" : avec since_id + filtre
+            // status=any, Shopify scanne par batch interne et peut renvoyer moins que `limit`
+            // sans que ce soit la dernière page (les commandes filtrées dans le batch ne
+            // remontent pas mais il en reste à paginer derrière).
+            long lastIdInPage = ordersNode.get(ordersNode.size() - 1).path("id").asLong();
+            if (lastIdInPage <= pageSinceId) {
+                // Garde-fou anti-boucle infinie : si l'id n'avance pas, on stoppe.
+                log.warn("Shopify import: pageSinceId n'avance plus (={}) — arrêt de la pagination", pageSinceId);
+                break;
+            }
+            pageSinceId = lastIdInPage;
         }
 
         // Advance the cursor only to the last successfully processed order.
