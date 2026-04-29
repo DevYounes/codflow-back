@@ -303,10 +303,12 @@ public class ShopifyImportService {
     }
 
     private String buildOrdersUrl(String domain, long sinceId) {
-        String base = "https://" + domain + "/admin/api/" + SHOPIFY_API_VERSION
-                + "/orders.json?status=any&limit=" + PAGE_LIMIT + "&order=id+asc";
-        if (sinceId > 0) base += "&since_id=" + sinceId;
-        return base;
+        // since_id est TOUJOURS passé (même =0) : c'est lui qui force le tri id ASC
+        // documenté par Shopify et garantit la pagination des plus anciennes vers
+        // les plus récentes. Sans since_id, l'API trie par id DESC et un store de
+        // plus de 250 commandes verrait ses plus anciennes silencieusement ignorées.
+        return "https://" + domain + "/admin/api/" + SHOPIFY_API_VERSION
+                + "/orders.json?status=any&limit=" + PAGE_LIMIT + "&since_id=" + sinceId;
     }
 
     private JsonNode fetchOrders(String url, String token) {
