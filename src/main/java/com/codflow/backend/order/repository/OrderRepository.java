@@ -25,6 +25,15 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     boolean existsByOrderNumber(String orderNumber);
 
+    /**
+     * Vérifie l'existence d'un order_number en bypassant le @SQLRestriction("deleted = false").
+     * À utiliser pour la détection de collisions au niveau de la contrainte unique DB :
+     * une commande soft-deleted occupe toujours son order_number en base.
+     */
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM orders WHERE order_number = :orderNumber)",
+            nativeQuery = true)
+    boolean existsByOrderNumberIncludingDeleted(@Param("orderNumber") String orderNumber);
+
     boolean existsByShopifyOrderId(String shopifyOrderId);
 
     Optional<Order> findByShopifyOrderId(String shopifyOrderId);

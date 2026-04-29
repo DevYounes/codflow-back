@@ -579,11 +579,15 @@ public class OrderService {
 
     private String generateOrderNumber(CreateOrderRequest request) {
         if (StringUtils.hasText(request.getOrderNumber())) {
-            if (!orderRepository.existsByOrderNumber(request.getOrderNumber())) {
+            // existsByOrderNumberIncludingDeleted bypasse le @SQLRestriction : une commande
+            // soft-deleted occupe toujours son order_number côté DB (contrainte unique).
+            // Sans ce check on aurait un duplicate key SQL au moment de l'INSERT.
+            if (!orderRepository.existsByOrderNumberIncludingDeleted(request.getOrderNumber())) {
                 return request.getOrderNumber();
             }
-            // Shopify imports: collision possible if an agent manually created an order with the same number.
-            // Add a short unique suffix rather than failing — we never want to lose a Shopify order over a name clash.
+            // Shopify imports: collision possible si une commande a été soft-deleted ou si un
+            // agent a manuellement créé une commande avec le même numéro.
+            // On ajoute un suffixe unique plutôt que d'échouer — pour ne jamais perdre une commande Shopify.
             if (request.getSource() == OrderSource.SHOPIFY) {
                 String candidate = request.getOrderNumber() + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
                 log.warn("Order number '{}' already exists — using '{}' for Shopify import {}",

@@ -98,8 +98,13 @@ public class ShopifyImportService {
 
     /**
      * Manual trigger — called from the controller.
+     *
+     * Pas de @Transactional ici (volontaire) : si une commande échoue à l'INSERT
+     * (ex. collision sur order_number), on ne veut pas empoisonner la session
+     * Hibernate pour les 200 suivantes. Chaque orderService.createOrder() est
+     * déjà @Transactional → chaque commande s'importe dans sa propre transaction
+     * isolée. Idem pour scheduledSync() (ligne ~73).
      */
-    @Transactional
     public ImportResultDto triggerImport() {
         String domain = settingService.get(SystemSettingService.KEY_SHOPIFY_DOMAIN).orElse(null);
         String token  = settingService.get(SystemSettingService.KEY_SHOPIFY_TOKEN).orElse(null);
