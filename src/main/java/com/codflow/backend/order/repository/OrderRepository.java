@@ -36,6 +36,25 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     boolean existsByShopifyOrderId(String shopifyOrderId);
 
+    /**
+     * Force la date de création (et confirmedAt/cancelledAt si fournis) sur une commande
+     * historique : l'auditing JPA (@CreatedDate) écrase la valeur sur persist, donc on
+     * la repositionne via UPDATE natif après le save.
+     */
+    @Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = """
+            UPDATE orders
+               SET created_at   = COALESCE(:createdAt, created_at),
+                   confirmed_at = COALESCE(:confirmedAt, confirmed_at),
+                   cancelled_at = COALESCE(:cancelledAt, cancelled_at)
+             WHERE id = :id
+            """, nativeQuery = true)
+    void overrideHistoricalDates(@Param("id") Long id,
+                                 @Param("createdAt") java.time.LocalDateTime createdAt,
+                                 @Param("confirmedAt") java.time.LocalDateTime confirmedAt,
+                                 @Param("cancelledAt") java.time.LocalDateTime cancelledAt);
+
     Optional<Order> findByShopifyOrderId(String shopifyOrderId);
 
     Optional<Order> findByExternalRef(String externalRef);

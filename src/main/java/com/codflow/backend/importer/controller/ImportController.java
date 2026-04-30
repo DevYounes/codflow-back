@@ -6,6 +6,7 @@ import com.codflow.backend.importer.service.AutoImportService;
 import com.codflow.backend.importer.service.ExcelImportService;
 import com.codflow.backend.importer.service.HistoricalExcelMigrationService;
 import com.codflow.backend.importer.service.OrderCostBackfillService;
+import com.codflow.backend.importer.service.ShopifyHistoricalCsvImportService;
 import com.codflow.backend.importer.service.ShopifyImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,6 +37,7 @@ public class ImportController {
     private final AutoImportService autoImportService;
     private final ShopifyImportService shopifyImportService;
     private final HistoricalExcelMigrationService historicalExcelMigrationService;
+    private final ShopifyHistoricalCsvImportService shopifyHistoricalCsvImportService;
     private final OrderCostBackfillService orderCostBackfillService;
 
     /**
@@ -252,6 +254,59 @@ public class ImportController {
                             result.getImported(), result.getSkipped(), result.getErrors()),
                     result));
         } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Import historique depuis un export CSV natif Shopify (Admin → Commandes →
+     * Exporter). Permet de récupérer les commandes plus anciennes que 60 jours,
+     * inaccessibles via l'API REST sans le scope read_all_orders.
+     *
+     * Le CSV Shopify contient une ligne par article ; les commandes multi-articles
+     * y apparaissent sur plusieurs lignes (même valeur "Name"). Le service les
+     * regroupe avant création.
+     *
+     * Idempotent : les commandes dont le order_number ou le shopify_order_id
+     * sont déjà en base sont ignorées.
+     *
+     * Paramètre defaultStatus :
+     *   - "auto" (défaut) → mapping basé sur Cancelled at, Fulfillment Status
+     *                       et Financial Status du CSV
+     *   - "LIVRE", "ANNULE", etc. → force toutes les commandes à ce statut
+     */
+    @PostMapping(value = "/shopify/historical/orders-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+        summary = "Import historique des commandes depuis un export CSV Shopify",
+        description = """
+            Crée les commandes manquantes à partir d'un export CSV natif Shopify.
+            Utile pour récupérer les commandes plus anciennes que 60 jours, qui
+            ne sont pas accessibles via l'API REST (limite Shopify, scope
+            read_all_orders requis).
+            Idempotent : les commandes déjà en base (order_number ou shopify_order_id)
+            sont ignorées.
+            """
+    )
+    public ResponseEntity<ApiResponse<ImportResultDto>> importShopifyHistoricalCsv(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "defaultStatus", defaultValue = "auto") String defaultStatus) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Le fichier est vide"));
+        }
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Format attendu: .csv (export Shopify natif)"));
+        }
+        try {
+            ImportResultDto result = shopifyHistoricalCsvImportService
+                    .importFromShopifyCsv(file, defaultStatus);
+            return ResponseEntity.ok(ApiResponse.success(
+                    String.format("Import CSV Shopify terminé: %d créées, %d ignorées, %d erreurs",
+                            result.getImported(), result.getSkipped(), result.getErrors()),
+                    result));
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
